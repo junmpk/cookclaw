@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cookclaw://conversation-failure-dataset/schema.v1.json",
+  "title": "CookClaw Conversation Failure Dataset v1",
+  "type": "object",
+  "required": ["schema_version", "dataset_version", "cases"],
+  "properties": {
+    "schema_version": {"const": "conversation_failure_dataset_v1"},
+    "dataset_version": {"type": "string", "pattern": "^[0-9]{4}\\.[0-9]{2}\\.[0-9]+$"},
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["case_id", "title", "source", "severity", "tags", "channel", "locale", "thread_policy", "pre_state", "turns", "cleanup"],
+        "properties": {
+          "case_id": {"type": "string", "pattern": "^[A-Z]+-[0-9]{2}$"},
+          "title": {"type": "string", "minLength": 1},
+          "source": {"type": "string", "minLength": 1},
+          "severity": {"enum": ["P0", "P1", "P2"]},
+          "tags": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+          "channel": {"enum": ["web", "qq", "weixin", "whatsapp", "all"]},
+          "locale": {"enum": ["zh", "en"]},
+          "thread_policy": {"enum": ["fresh", "reuse", "new_thread_same_account"]},
+          "pre_state": {"type": "object"},
+          "turns": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["input", "expected"],
+              "properties": {
+                "input": {"type": "string", "minLength": 1, "maxLength": 8000},
+                "expected": {
+                  "type": "object",
+                  "required": ["route", "state", "allowed_tools", "forbidden_tools", "response", "judge_rubric"]
+                }
+              }
+            }
+          },
+          "cleanup": {"type": "object"}
+        }
+      }
+    }
+  }
+}

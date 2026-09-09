@@ -1,0 +1,10 @@
+{
+  "default_device": "demo",
+  "devices": {
+    "demo": {
+      "provider_device_id": "mock-device",
+      "device_type": 0,
+      "name": "Demo cooker"
+    }
+  }
+}

@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CookClaw 聊天调试</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f5f5; height: 100vh; display: flex; flex-direction: column; }
+        .header { background: #1a1a2e; color: white; padding: 12px 20px; font-size: 16px; font-weight: 600; }
+        .chat-box { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+        .msg { max-width: min(75%, 760px); padding: 10px 14px; border-radius: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; font-size: 14px; }
+        .msg img { max-width: min(100%, 360px); max-height: 320px; border-radius: 10px; margin: 10px 0; display: block; object-fit: cover; }
+        .msg.user { align-self: flex-end; background: #4361ee; color: white; border-bottom-right-radius: 4px; }
+        .msg.bot { align-self: flex-start; background: white; color: #333; border-bottom-left-radius: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+        .msg.bot.markdown { white-space: normal; padding: 14px 16px; }
+        .msg.markdown h1, .msg.markdown h2, .msg.markdown h3,
+        .msg.markdown h4, .msg.markdown h5, .msg.markdown h6 {
+            line-height: 1.3;
+            color: #172033;
+            margin: 1.1em 0 0.5em;
+            font-weight: 700;
+        }
+        .msg.markdown h1:first-child, .msg.markdown h2:first-child,
+        .msg.markdown h3:first-child { margin-top: 0; }
+        .msg.markdown h1 { font-size: 1.45rem; }
+        .msg.markdown h2 { font-size: 1.25rem; padding-bottom: 0.4em; border-bottom: 1px solid #e8ebf2; }
+        .msg.markdown h3 { font-size: 1.08rem; }
+        .msg.markdown h4, .msg.markdown h5, .msg.markdown h6 { font-size: 1rem; }
+        .msg.markdown p { margin: 0.55em 0; }
+        .msg.markdown ul, .msg.markdown ol { margin: 0.55em 0 0.75em 1.45em; padding: 0; }
+        .msg.markdown li { margin: 0.28em 0; padding-left: 0.15em; }
+        .msg.markdown strong { color: #172033; font-weight: 700; }
+        .msg.markdown a { color: #3156d3; text-decoration: none; }
+        .msg.markdown a:hover { text-decoration: underline; }
+        .msg.markdown blockquote {
+            margin: 0.75em 0;
+            padding: 0.5em 0.9em;
+            border-left: 3px solid #8294e8;
+            background: #f6f7fc;
+            color: #4a5368;
+        }
+        .msg.markdown code {
+            padding: 0.12em 0.38em;
+            border-radius: 5px;
+            background: #f0f2f6;
+            color: #c0265e;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 0.9em;
+        }
+        .msg.markdown pre {
+            overflow-x: auto;
+            margin: 0.8em 0;
+            padding: 12px 14px;
+            border-radius: 9px;
+            background: #161b2b;
+            color: #eef1f7;
+            line-height: 1.5;
+        }
+        .msg.markdown pre code { padding: 0; background: transparent; color: inherit; }
+        .msg.markdown hr { border: 0; border-top: 1px solid #e3e6ed; margin: 1em 0; }
+        .msg.markdown .table-wrap { max-width: 100%; overflow-x: auto; margin: 0.75em 0; }
+        .msg.markdown table { border-collapse: collapse; min-width: 100%; font-size: 0.92em; }
+        .msg.markdown th, .msg.markdown td { border: 1px solid #dfe3ec; padding: 7px 9px; text-align: left; }
+        .msg.markdown th { background: #f3f5fa; color: #172033; }
+        .msg.error { background: #fee2e2; color: #dc2626; }
+        .msg .cursor { display: inline-block; width: 2px; height: 14px; background: #4361ee; animation: blink 1s infinite; vertical-align: middle; margin-left: 2px; }
+        @keyframes blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
+        .input-area { display: flex; padding: 12px 16px; gap: 8px; background: white; border-top: 1px solid #e5e5e5; }
+        .input-area textarea { flex: 1; padding: 10px 14px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; outline: none; resize: none; min-height: 40px; max-height: 120px; font-family: inherit; }
+        .input-area textarea:focus { border-color: #4361ee; }
+        .input-area button { padding: 10px 20px; background: #4361ee; color: white; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; white-space: nowrap; }
+        .input-area button:hover { background: #3a56d4; }
+        .input-area button:disabled { background: #aaa; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    <div class="header">🍳 CookClaw 聊天调试</div>
+    <div class="chat-box" id="chatBox"></div>
+    <div class="input-area">
+        <textarea id="msgInput" placeholder="输入消息..." rows="1" autofocus></textarea>
+        <button id="sendBtn" onclick="sendMessage()">发送</button>
+    </div>
+    <script>
+        const API_URL = "/api/v1/chat";
+        const chatBox = document.getElementById("chatBox");
+        const msgInput = document.getElementById("msgInput");
+        const sendBtn = document.getElementById("sendBtn");
+
+        // localStorage 持久化聊天记录
+        const STORAGE_KEY = "cookclaw_chat_history";
+        // 每个浏览器标签页维护自己的会话 ID，避免不同用户/标签页串掉“上一问”。
+        // 首轮由服务端生成，之后随请求传回，才能承接推荐前的单轮澄清。
+        const THREAD_STORAGE_KEY = "cookclaw_web_thread_id";
+        let threadId = null;
+        try { threadId = sessionStorage.getItem(THREAD_STORAGE_KEY); } catch {}
+        function saveHistory() {
+            const msgs = [];
+            chatBox.querySelectorAll(".msg").forEach(div => {
+                const type = div.classList.contains("user") ? "user"
+                    : div.classList.contains("error") ? "error" : "bot";
+                // 优先从 dataset.raw 读取原始文本（保留图片 URL）
+                const text = div.dataset.raw || div.textContent || "";
+                msgs.push({ type, text });
+            });
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(msgs)); } catch {}
+        }
+        function loadHistory() {
+            try {
+                const msgs = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+                msgs.forEach(m => addMsg(m.text, m.type, false));
+            } catch {}
+        }
+
+        // 自动调整 textarea 高度
+        msgInput.addEventListener("input", () => {
+            msgInput.style.height = "auto";
+            msgInput.style.height = Math.min(msgInput.scrollHeight, 120) + "px";
+        });
+
+        // 跟踪输入法组合状态
+        let isComposing = false;
+        msgInput.addEventListener("compositionstart", () => { isComposing = true; });
+        msgInput.addEventListener("compositionend", () => { isComposing = false; });
+
+        // 回车发送（输入法组字中不触发），Shift+回车换行
+        msgInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" && !e.shiftKey && !isComposing && !e.isComposing) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        function escapeHtml(value) {
+            return String(value ?? "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
+        function safeUrl(value, image = false) {
+            const raw = String(value || "").trim();
+            try {
+                const parsed = new URL(raw, window.location.origin);
+                const allowed = parsed.protocol === "http:" || parsed.protocol === "https:"
+                    || (!image && parsed.protocol === "mailto:");
+                return allowed ? escapeHtml(raw) : "";
+            } catch {
+                return "";
+            }
+        }
+
+        function renderInlineMarkdown(value) {
+            const tokens = [];
+            const stash = html => {
+                const key = `\uE000MD${tokens.length}\uE001`;
+                tokens.push({ key, html });
+                return key;
+            };
+            let source = String(value || "");
+
+            source = source.replace(/`([^`\n]+)`/g, (_, code) =>
+                stash(`<code>${escapeHtml(code)}</code>`));
+            source = source.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_, alt, url) => {
+                const safe = safeUrl(url, true);
+                return safe
+                    ? stash(`<img src="${safe}" alt="${escapeHtml(alt)}" loading="lazy">`)
+                    : alt;
+            });
+            source = source.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, label, url) => {
+                const safe = safeUrl(url, false);
+                return safe
+                    ? stash(`<a href="${safe}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`)
+                    : label;
+            });
+            source = source.replace(/🖼️ 图片：(\S+)/g, (_, url) => {
+                const safe = safeUrl(url, true);
+                return safe ? stash(`<img src="${safe}" alt="菜谱图片" loading="lazy">`) : "";
+            });
+
+            let html = escapeHtml(source)
+                .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
+                .replace(/~~([^~\n]+)~~/g, "<del>$1</del>")
+                .replace(/(^|[\s(])\*([^*\n]+)\*(?=$|[\s).,!?:;])/g, "$1<em>$2</em>");
+            for (const token of tokens) {
+                html = html.split(token.key).join(token.html);
+            }
+            return html;
+        }
+
+        function splitTableRow(line) {
+            return line.trim().replace(/^\|/, "").replace(/\|$/, "")
+                .split("|").map(cell => cell.trim());
+        }
+
+        function isTableDivider(line) {
+            const cells = splitTableRow(line);
+            return cells.length > 1 && cells.every(cell => /^:?-{3,}:?$/.test(cell));
+        }
+
+        function renderMarkdown(text) {
+            const lines = String(text || "").replace(/\r\n?/g, "\n").split("\n");
+            const output = [];
+            let index = 0;
+
+            while (index < lines.length) {
+                const line = lines[index];
+                if (!line.trim()) {
+                    index += 1;
+                    continue;
+                }
+
+                const fence = line.match(/^\s*```([A-Za-z0-9_-]*)\s*$/);
+                if (fence) {
+                    const code = [];
+                    index += 1;
+                    while (index < lines.length && !/^\s*```\s*$/.test(lines[index])) {
+                        code.push(lines[index]);
+                        index += 1;
+                    }
+                    if (index < lines.length) index += 1;
+                    const language = fence[1] ? ` class="language-${escapeHtml(fence[1])}"` : "";
+                    output.push(`<pre><code${language}>${escapeHtml(code.join("\n"))}</code></pre>`);
+                    continue;
+                }
+
+                const heading = line.match(/^(#{1,6})\s+(.+)$/);
+                if (heading) {
+                    const level = heading[1].length;
+                    output.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`);
+                    index += 1;
+                    continue;
+                }
+
+                if (/^\s*(---+|\*\*\*+)\s*$/.test(line)) {
+                    output.push("<hr>");
+                    index += 1;
+                    continue;
+                }
+
+                if (index + 1 < lines.length && line.includes("|") && isTableDivider(lines[index + 1])) {
+                    const headers = splitTableRow(line);
+                    const rows = [];
+                    index += 2;
+                    while (index < lines.length && lines[index].includes("|") && lines[index].trim()) {
+                        rows.push(splitTableRow(lines[index]));
+                        index += 1;
+                    }
+                    const head = headers.map(cell => `<th>${renderInlineMarkdown(cell)}</th>`).join("");
+                    const body = rows.map(row =>
+                        `<tr>${headers.map((_, cellIndex) =>
+                            `<td>${renderInlineMarkdown(row[cellIndex] || "")}</td>`).join("")}</tr>`
+                    ).join("");
+                    output.push(`<div class="table-wrap"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`);
+                    continue;
+                }
+
+                const listMatch = line.match(/^\s*([-+*]|\d+\.)\s+(.+)$/);
+                if (listMatch) {
+                    const ordered = /\d+\./.test(listMatch[1]);
+                    const tag = ordered ? "ol" : "ul";
+                    const items = [];
+                    while (index < lines.length) {
+                        const match = lines[index].match(/^\s*([-+*]|\d+\.)\s+(.+)$/);
+                        if (!match || /\d+\./.test(match[1]) !== ordered) break;
+                        items.push(`<li>${renderInlineMarkdown(match[2])}</li>`);
+                        index += 1;
+                    }
+                    output.push(`<${tag}>${items.join("")}</${tag}>`);
+                    continue;
+                }
+
+                if (/^\s*>\s?/.test(line)) {
+                    const quote = [];
+                    while (index < lines.length && /^\s*>\s?/.test(lines[index])) {
+                        quote.push(lines[index].replace(/^\s*>\s?/, ""));
+                        index += 1;
+                    }
+                    output.push(`<blockquote>${quote.map(renderInlineMarkdown).join("<br>")}</blockquote>`);
+                    continue;
+                }
+
+                const paragraph = [line];
+                index += 1;
+                while (index < lines.length && lines[index].trim()
+                    && !/^(#{1,6})\s+/.test(lines[index])
+                    && !/^\s*```/.test(lines[index])
+                    && !/^\s*([-+*]|\d+\.)\s+/.test(lines[index])
+                    && !/^\s*>\s?/.test(lines[index])
+                    && !/^\s*(---+|\*\*\*+)\s*$/.test(lines[index])
+                    && !(index + 1 < lines.length && lines[index].includes("|") && isTableDivider(lines[index + 1]))) {
+                    paragraph.push(lines[index]);
+                    index += 1;
+                }
+                output.push(`<p>${paragraph.map(renderInlineMarkdown).join("<br>")}</p>`);
+            }
+            return output.join("");
+        }
+
+        function renderPlainText(text) {
+            return escapeHtml(text).replace(/\n/g, "<br>");
+        }
+
+        function addMsg(text, type, save = true) {
+            const div = document.createElement("div");
+            div.className = `msg ${type}`;
+            if (type === "bot") div.classList.add("markdown");
+            div.dataset.raw = text;  // 保存原始文本（含图片 URL）
+            div.innerHTML = type === "bot" ? renderMarkdown(text) : renderPlainText(text);
+            chatBox.appendChild(div);
+            chatBox.scrollTop = chatBox.scrollHeight;
+            if (save) saveHistory();
+            return div;
+        }
+
+        function createBotMsg() {
+            const div = document.createElement("div");
+            div.className = "msg bot markdown";
+            div.dataset.raw = "";  // 初始化原始文本累加器
+            const cursor = document.createElement("span");
+            cursor.className = "cursor";
+            div.appendChild(cursor);
+            chatBox.appendChild(div);
+            chatBox.scrollTop = chatBox.scrollHeight;
+            return { div, cursor };
+        }
+
+        function appendToBotMsg(div, cursor, text) {
+            // 累积原始文本到 dataset.raw（不受 innerHTML 重渲染影响）
+            div.dataset.raw = (div.dataset.raw || "") + text;
+            const fullText = div.dataset.raw;
+            // 流式追加文本节点
+            const textNode = document.createTextNode(text);
+            div.insertBefore(textNode, cursor);
+            // 完成一个 Markdown 行后增量重渲染；最终结束时再完整渲染一次。
+            if (text.includes("\n")) {
+                cursor.remove();
+                div.innerHTML = renderMarkdown(fullText);
+                div.appendChild(cursor);
+            }
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        function finalizeBotMsg(div, cursor) {
+            // 流式结束后，一次性完成 Markdown 渲染。
+            cursor.remove();
+            const fullText = div.dataset.raw || div.textContent || "";
+            div.innerHTML = renderMarkdown(fullText);
+            chatBox.scrollTop = chatBox.scrollHeight;
+            saveHistory();
+        }
+
+        async function sendMessage() {
+            const text = msgInput.value.trim();
+            if (!text) return;
+
+            msgInput.value = "";
+            msgInput.style.height = "auto";
+            sendBtn.disabled = true;
+
+            addMsg(text, "user");
+            const { div, cursor } = createBotMsg();
+
+            try {
+                const payload = { question: text };
+                if (threadId) payload.thread_id = threadId;
+                const res = await fetch(API_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+
+                const responseThreadId = res.headers.get("X-CookClaw-Thread-Id");
+                if (responseThreadId) {
+                    threadId = responseThreadId;
+                    try { sessionStorage.setItem(THREAD_STORAGE_KEY, threadId); } catch {}
+                }
+
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = "";
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split("\n");
+                    buffer = lines.pop();
+
+                    for (const line of lines) {
+                        if (!line.startsWith("data: ")) continue;
+                        const data = line.slice(6);
+                        if (data === "[DONE]") break;
+                        try {
+                            const parsed = JSON.parse(data);
+                            if (parsed.content) {
+                                appendToBotMsg(div, cursor, parsed.content);
+                            }
+                        } catch {}
+                    }
+                }
+            } catch (err) {
+                cursor.remove();
+                div.textContent = "";
+                addMsg(`请求失败: ${err.message}`, "error");
+            } finally {
+                // 流式结束后渲染图片（如果 cursor 还在说明没被 catch 移除）
+                if (cursor.parentNode) finalizeBotMsg(div, cursor);
+                sendBtn.disabled = false;
+                msgInput.focus();
+            }
+        }
+        // 页面加载时恢复聊天记录
+        loadHistory();
+    </script>
+</body>
+</html>

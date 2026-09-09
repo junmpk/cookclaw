@@ -1,0 +1,77 @@
+# Python build / test artifacts
+__pycache__/
+*.py[cod]
+build/
+dist/
+wheels/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments and dependency caches
+.venv/
+app/agent/skills/recipe-search/.venv/
+cache/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+app/whatsapp/service/.env
+app/agent/skills/recipe-operation/config.json
+*.pem
+*.key
+
+# Runtime state and channel login credentials
+state/
+app/whatsapp/service/auth*/
+.weixinbot/
+app/weixinbot/.wx_session*.json
+**/auth*/
+**/creds.json
+**/*session*.json
+
+# Local databases / Milvus Lite
+*.db
+*.db.lock
+*.db-wal
+*.db-shm
+app/agent/skills/recipe-search/recipe_milvus.db/
+
+# Generated data, reports, packages and temporary files
+tmp/
+outputs/
+release_packages/
+large_tool_results/
+/cookclaw-server-*.tar.gz
+/菜品清单_*.xlsx
+*.log
+*.bak
+*.swp
+*.swo
+*cache*.jsonl
+app/agent/skills/recipe-search/translate_cache_es.jsonl
+app/agent/_skills_disabled/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local agent / IDE state
+.claude/
+.learnings/
+.idea/
+.vscode/
+.codex/
+.agents/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*

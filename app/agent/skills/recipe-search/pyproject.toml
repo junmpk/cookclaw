@@ -1,0 +1,25 @@
+[project]
+name = "recipe-search"
+version = "1.0.0"
+description = "Recipe search skill for CookClaw - retrieves recipes from Milvus vector database"
+authors = [{name = "CookClaw Team"}]
+dependencies = [
+    "pymilvus>=2.3.0",
+    "sentence-transformers>=2.2.0",
+    "loguru>=0.7.0",
+    "openai>=2.41.1",
+    "openpyxl>=3.1.5",
+    "milvus-lite>=3.0",
+    "jieba>=0.42.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+
+[[tool.uv.index]]
+url = "https://mirrors.aliyun.com/pypi/simple/"
+default = true
+# UV-specific configuration

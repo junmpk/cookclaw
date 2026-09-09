@@ -1,0 +1,534 @@
+{
+  "$defs": {
+    "Facets": {
+      "description": "语言无关的筛选维度。分类维度取值须在 facet_labels.json 词表内。",
+      "properties": {
+        "cuisine": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Cuisine",
+          "type": "array"
+        },
+        "main_ingredient": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Main Ingredient",
+          "type": "array"
+        },
+        "flavor": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Flavor",
+          "type": "array"
+        },
+        "method": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Method",
+          "type": "array"
+        },
+        "scene": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Scene",
+          "type": "array"
+        },
+        "meal": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Meal",
+          "type": "array"
+        },
+        "nutrition": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Nutrition",
+          "type": "array"
+        },
+        "diet": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Diet",
+          "type": "array"
+        },
+        "allergens": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Allergens",
+          "type": "array"
+        },
+        "device": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Device",
+          "type": "array"
+        },
+        "cookware": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Cookware",
+          "type": "array"
+        },
+        "difficulty": {
+          "anyOf": [
+            {
+              "maximum": 5,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Difficulty"
+        },
+        "total_time_min": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Time Min"
+        },
+        "prep_time_min": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prep Time Min"
+        },
+        "cook_time_min": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cook Time Min"
+        },
+        "spiciness": {
+          "anyOf": [
+            {
+              "maximum": 5,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Spiciness"
+        },
+        "servings": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Servings"
+        },
+        "calorie_kcal": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Calorie Kcal"
+        },
+        "nutrition_facts": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NutritionFacts"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "Facets",
+      "type": "object"
+    },
+    "I18nText": {
+      "description": "某一语言的展示文本。",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "ingredient_names": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "title": "Ingredient Names",
+          "type": "object"
+        },
+        "step_texts": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Step Texts",
+          "type": "array"
+        },
+        "display_tags": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Display Tags",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "I18nText",
+      "type": "object"
+    },
+    "Ingredient": {
+      "description": "结构化食材：用量 + 单位 + 过敏原（name_key 语言无关，本地名进 i18n）。",
+      "properties": {
+        "name_key": {
+          "title": "Name Key",
+          "type": "string"
+        },
+        "amount": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Amount"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "group": {
+          "default": "main",
+          "title": "Group",
+          "type": "string"
+        },
+        "optional": {
+          "default": false,
+          "title": "Optional",
+          "type": "boolean"
+        },
+        "allergen": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Allergen"
+        }
+      },
+      "required": [
+        "name_key"
+      ],
+      "title": "Ingredient",
+      "type": "object"
+    },
+    "NutritionFacts": {
+      "properties": {
+        "protein_g": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Protein G"
+        },
+        "fat_g": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fat G"
+        },
+        "carb_g": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Carb G"
+        },
+        "fiber_g": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fiber G"
+        }
+      },
+      "title": "NutritionFacts",
+      "type": "object"
+    },
+    "Step": {
+      "properties": {
+        "order": {
+          "minimum": 1,
+          "title": "Order",
+          "type": "integer"
+        },
+        "text_key": {
+          "title": "Text Key",
+          "type": "string"
+        },
+        "action": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Action"
+        },
+        "device_params": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StepDeviceParams"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "order",
+        "text_key"
+      ],
+      "title": "Step",
+      "type": "object"
+    },
+    "StepDeviceParams": {
+      "description": "设备可执行参数（对接 recipe-operation 的执行指令）。",
+      "properties": {
+        "temp_c": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Temp C"
+        },
+        "speed": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Speed"
+        },
+        "duration_s": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration S"
+        }
+      },
+      "title": "StepDeviceParams",
+      "type": "object"
+    }
+  },
+  "description": "标准菜谱：语言无关骨架 + 每语言一份 i18n 文本。",
+  "properties": {
+    "recipe_id": {
+      "title": "Recipe Id",
+      "type": "string"
+    },
+    "source": {
+      "default": "unknown",
+      "title": "Source",
+      "type": "string"
+    },
+    "image_url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Image Url"
+    },
+    "canonical_lang": {
+      "default": "zh",
+      "enum": [
+        "zh",
+        "en"
+      ],
+      "title": "Canonical Lang",
+      "type": "string"
+    },
+    "version": {
+      "default": 1,
+      "title": "Version",
+      "type": "integer"
+    },
+    "updated_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Updated At"
+    },
+    "facets": {
+      "$ref": "#/$defs/Facets"
+    },
+    "ingredients": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Ingredient"
+      },
+      "title": "Ingredients",
+      "type": "array"
+    },
+    "steps": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Step"
+      },
+      "title": "Steps",
+      "type": "array"
+    },
+    "i18n": {
+      "additionalProperties": {
+        "$ref": "#/$defs/I18nText"
+      },
+      "title": "I18N",
+      "type": "object"
+    }
+  },
+  "required": [
+    "recipe_id",
+    "i18n"
+  ],
+  "title": "Recipe",
+  "type": "object"
+}

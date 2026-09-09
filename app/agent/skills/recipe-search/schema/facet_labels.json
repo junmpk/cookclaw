@@ -1,0 +1,100 @@
+{
+  "_meta": {
+    "doc": "canonical slug → 多语言 label 的单一真相。zh label 对齐 module/normalize.py 现有中文 canonical；新增 diet/allergens/device/cookware。维度键名与 recipe_schema.Facets 的字段一一对应。",
+    "filter_mode": {
+      "cuisine": "optional", "main_ingredient": "optional",
+      "flavor": "soft", "method": "soft", "scene": "soft", "meal": "soft", "nutrition": "soft",
+      "diet": "hard", "allergens": "hard",
+      "device": "optional", "cookware": "soft",
+      "difficulty": "optional", "total_time_min": "optional", "spiciness": "optional"
+    },
+    "numeric_dims": {
+      "difficulty": [1, 5], "spiciness": [0, 5],
+      "total_time_min": [0, null], "prep_time_min": [0, null], "cook_time_min": [0, null],
+      "servings": [1, null], "calorie_kcal": [0, null]
+    }
+  },
+
+  "cuisine": {
+    "sichuan": {"zh": "川菜", "en": "Sichuan"}, "cantonese": {"zh": "粤菜", "en": "Cantonese"},
+    "shandong": {"zh": "鲁菜", "en": "Shandong"}, "hunan": {"zh": "湘菜", "en": "Hunan"},
+    "jiangsu": {"zh": "苏菜", "en": "Jiangsu"}, "zhejiang": {"zh": "浙菜", "en": "Zhejiang"},
+    "fujian": {"zh": "闽菜", "en": "Fujian"}, "anhui": {"zh": "徽菜", "en": "Anhui"},
+    "northeastern": {"zh": "东北菜", "en": "Northeastern"}, "northwestern": {"zh": "西北菜", "en": "Northwestern"},
+    "home_style": {"zh": "家常菜", "en": "Home-style"}, "western": {"zh": "西餐", "en": "Western"},
+    "japanese": {"zh": "日料", "en": "Japanese"}, "korean": {"zh": "韩餐", "en": "Korean"},
+    "southeast_asian": {"zh": "东南亚菜", "en": "Southeast Asian"}
+  },
+
+  "main_ingredient": {
+    "pork": {"zh": "猪肉", "en": "Pork"}, "beef": {"zh": "牛肉", "en": "Beef"},
+    "chicken": {"zh": "鸡肉", "en": "Chicken"}, "duck": {"zh": "鸭肉", "en": "Duck"},
+    "lamb": {"zh": "羊肉", "en": "Lamb"}, "fish": {"zh": "鱼", "en": "Fish"},
+    "shrimp": {"zh": "虾", "en": "Shrimp"}, "seafood": {"zh": "海鲜", "en": "Seafood"},
+    "vegetable": {"zh": "蔬菜", "en": "Vegetable"}, "tofu": {"zh": "豆制品", "en": "Tofu / Bean products"},
+    "egg": {"zh": "蛋", "en": "Egg"}, "potato": {"zh": "薯类", "en": "Potato / Tuber"},
+    "mushroom": {"zh": "菌菇", "en": "Mushroom"}, "staple": {"zh": "主食", "en": "Staple"}
+  },
+
+  "flavor": {
+    "spicy": {"zh": "辣", "en": "Spicy"}, "light": {"zh": "清淡", "en": "Light"},
+    "savory": {"zh": "咸鲜", "en": "Savory"}, "sweet_sour": {"zh": "酸甜", "en": "Sweet-and-sour"},
+    "sour_spicy": {"zh": "酸辣", "en": "Sour-and-spicy"}, "sour_salty": {"zh": "酸咸", "en": "Sour-and-salty"},
+    "sweet": {"zh": "甜", "en": "Sweet"}, "aromatic": {"zh": "鲜香", "en": "Aromatic"},
+    "numbing": {"zh": "麻", "en": "Numbing"}
+  },
+
+  "method": {
+    "stir_fried": {"zh": "炒", "en": "Stir-fried"}, "stewed": {"zh": "炖", "en": "Stewed"},
+    "steamed": {"zh": "蒸", "en": "Steamed"}, "roasted": {"zh": "烤", "en": "Roasted"},
+    "fried": {"zh": "炸", "en": "Deep-fried"}, "boiled": {"zh": "煮", "en": "Boiled"},
+    "braised": {"zh": "煨", "en": "Braised"}, "simmered": {"zh": "焖", "en": "Simmered"},
+    "marinated": {"zh": "卤", "en": "Marinated"}, "cold_mixed": {"zh": "凉拌", "en": "Cold-mixed"},
+    "red_braised": {"zh": "红烧", "en": "Red-braised"}, "clay_pot": {"zh": "煲", "en": "Clay-pot"}
+  },
+
+  "scene": {
+    "quick": {"zh": "快手菜", "en": "Quick"}, "rice_companion": {"zh": "下饭菜", "en": "Rice-companion"},
+    "diet": {"zh": "减脂餐", "en": "Diet"}, "banquet": {"zh": "宴客", "en": "Banquet"},
+    "kids": {"zh": "儿童", "en": "Kids"}, "tonic": {"zh": "滋补", "en": "Tonic"},
+    "drinking_snack": {"zh": "下酒菜", "en": "Drinking snack"}, "bento": {"zh": "便当", "en": "Bento"}
+  },
+
+  "meal": {
+    "breakfast": {"zh": "早餐", "en": "Breakfast"}, "main_course": {"zh": "正餐", "en": "Main course"},
+    "soup": {"zh": "汤", "en": "Soup"}, "dessert": {"zh": "甜品", "en": "Dessert"},
+    "beverage": {"zh": "饮品", "en": "Beverage"}, "congee": {"zh": "粥", "en": "Congee"},
+    "staple": {"zh": "主食", "en": "Staple"}, "snack": {"zh": "小吃", "en": "Snack"},
+    "late_night": {"zh": "夜宵", "en": "Late-night"}
+  },
+
+  "nutrition": {
+    "high_protein": {"zh": "高蛋白", "en": "High-protein"}, "low_fat": {"zh": "低脂", "en": "Low-fat"},
+    "high_fiber": {"zh": "高纤维", "en": "High-fiber"}, "calcium_rich": {"zh": "补钙", "en": "Calcium-rich"},
+    "low_calorie": {"zh": "低卡", "en": "Low-calorie"}, "low_carb": {"zh": "低碳水", "en": "Low-carb"}
+  },
+
+  "diet": {
+    "vegetarian": {"zh": "素食", "en": "Vegetarian"}, "vegan": {"zh": "纯素", "en": "Vegan"},
+    "halal": {"zh": "清真", "en": "Halal"}, "gluten_free": {"zh": "无麸质", "en": "Gluten-free"}
+  },
+
+  "allergens": {
+    "peanut": {"zh": "花生", "en": "Peanut"}, "tree_nut": {"zh": "坚果", "en": "Tree nut"},
+    "gluten": {"zh": "麸质", "en": "Gluten"}, "egg": {"zh": "蛋", "en": "Egg"},
+    "milk": {"zh": "奶", "en": "Milk"}, "soy": {"zh": "大豆", "en": "Soy"},
+    "shellfish": {"zh": "贝类海鲜", "en": "Shellfish"}, "sesame": {"zh": "芝麻", "en": "Sesame"}
+  },
+
+  "device": {
+    "cookclaw_k3501": {"zh": "CookClaw K3501", "en": "CookClaw K3501"},
+    "air_fryer": {"zh": "空气炸锅", "en": "Air fryer"},
+    "multi_cooker": {"zh": "多功能料理锅", "en": "Multi-cooker"}
+  },
+
+  "cookware": {
+    "wok": {"zh": "炒锅", "en": "Wok"}, "oven": {"zh": "烤箱", "en": "Oven"},
+    "steamer": {"zh": "蒸锅", "en": "Steamer"}, "rice_cooker": {"zh": "电饭煲", "en": "Rice cooker"},
+    "clay_pot": {"zh": "砂锅", "en": "Clay pot"}, "air_fryer": {"zh": "空气炸锅", "en": "Air fryer"}
+  }
+}

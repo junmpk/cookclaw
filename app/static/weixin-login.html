@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CookGPT（KitchenIdea）微信扫码登录</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #f6f7f9;
+            color: #202124;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+        .panel {
+            width: min(460px, 100%);
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+            padding: 24px;
+        }
+        h1 {
+            margin: 0 0 6px;
+            font-size: 22px;
+            line-height: 1.3;
+        }
+        .sub {
+            margin: 0 0 20px;
+            color: #5f6368;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .qr-wrap {
+            min-height: 260px;
+            display: grid;
+            place-items: center;
+            border: 1px dashed #d1d5db;
+            border-radius: 8px;
+            background: #fafafa;
+            margin-bottom: 16px;
+            padding: 16px;
+            text-align: center;
+        }
+        .qr-wrap img {
+            width: 228px;
+            height: 228px;
+            image-rendering: pixelated;
+        }
+        .placeholder {
+            color: #777;
+            font-size: 14px;
+            line-height: 1.7;
+        }
+        .actions {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+        button, a.button {
+            border: 0;
+            border-radius: 6px;
+            padding: 10px 14px;
+            font-size: 14px;
+            cursor: pointer;
+            text-decoration: none;
+            text-align: center;
+        }
+        button.primary {
+            flex: 1;
+            background: #16a34a;
+            color: white;
+        }
+        button.secondary, a.button {
+            background: #eef2f7;
+            color: #1f2937;
+        }
+        button:disabled {
+            background: #a8b0bb;
+            cursor: not-allowed;
+        }
+        .status {
+            min-height: 42px;
+            border-radius: 6px;
+            background: #f1f5f9;
+            padding: 10px 12px;
+            color: #334155;
+            font-size: 13px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .status.ok {
+            background: #ecfdf3;
+            color: #166534;
+        }
+        .status.err {
+            background: #fef2f2;
+            color: #b91c1c;
+        }
+        .meta {
+            margin-top: 12px;
+            color: #6b7280;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+        .accounts {
+            margin-top: 18px;
+            border-top: 1px solid #e5e7eb;
+            padding-top: 16px;
+        }
+        .accounts h2 { margin: 0 0 10px; font-size: 15px; }
+        .account-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 9px 0;
+            border-bottom: 1px solid #f1f5f9;
+            font-size: 12px;
+        }
+        .account-id { word-break: break-all; }
+        .account-state { color: #64748b; white-space: nowrap; }
+        .account-state.ok { color: #15803d; }
+        .account-state.err { color: #b91c1c; }
+        button.danger { background: #fee2e2; color: #b91c1c; padding: 6px 9px; }
+    </style>
+</head>
+<body>
+    <main class="panel">
+        <h1>CookGPT（KitchenIdea）微信扫码登录</h1>
+        <p class="sub">用于内部调试 CookGPT（KitchenIdea）微信机器人通道。点击生成二维码后，用测试微信扫码确认。</p>
+
+        <section class="qr-wrap" id="qrWrap">
+            <div class="placeholder">点击下方按钮生成登录二维码</div>
+        </section>
+
+        <div class="actions">
+            <button class="primary" id="startBtn">生成二维码</button>
+            <a class="button" id="openLink" href="#" target="_blank" rel="noreferrer" style="display:none;">打开链接</a>
+        </div>
+
+        <div class="status" id="status">等待开始</div>
+        <div class="meta" id="meta"></div>
+        <section class="accounts">
+            <h2 id="accountTitle">微信账号（加载中）</h2>
+            <div id="accountList"></div>
+        </section>
+    </main>
+
+    <script>
+        const startBtn = document.getElementById("startBtn");
+        const openLink = document.getElementById("openLink");
+        const qrWrap = document.getElementById("qrWrap");
+        const statusBox = document.getElementById("status");
+        const meta = document.getElementById("meta");
+        const accountTitle = document.getElementById("accountTitle");
+        const accountList = document.getElementById("accountList");
+
+        let sessionKey = "";
+        let waiting = false;
+        let accountState = { account_count: 0, max_accounts: 10, accounts: [] };
+
+        function setStatus(text, type = "") {
+            statusBox.className = `status ${type}`.trim();
+            statusBox.textContent = text;
+        }
+
+        function redact(value) {
+            if (!value) return "";
+            return value.length > 12 ? `${value.slice(0, 6)}...${value.slice(-4)}` : value;
+        }
+
+        async function requestJson(url, options = {}) {
+            const res = await fetch(url, options);
+            const data = await res.json();
+            if (!res.ok || data.error) {
+                throw new Error(data.error || `请求失败：${res.status}`);
+            }
+            return data;
+        }
+
+        function escapeHtml(value) {
+            return String(value || "")
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;")
+                .replaceAll('"', "&quot;");
+        }
+
+        async function refreshAccounts() {
+            try {
+                accountState = await requestJson("/api/v1/weixin/status");
+                const count = Number(accountState.account_count || 0);
+                const max = Number(accountState.max_accounts || 10);
+                accountTitle.textContent = `微信账号（${count}/${max}）`;
+                startBtn.disabled = waiting || count >= max;
+                startBtn.textContent = count >= max ? "已达到账号上限" : "添加微信账号";
+                const accounts = accountState.accounts || [];
+                if (!accounts.length) {
+                    accountList.innerHTML = '<div class="placeholder">尚未添加微信账号</div>';
+                    return;
+                }
+                accountList.innerHTML = accounts.map((account) => {
+                    const stateClass = account.connected ? "ok" : (account.authExpired ? "err" : "");
+                    const stateText = account.connected ? "在线" : (account.authExpired ? "登录过期" : "未连接");
+                    const id = escapeHtml(account.accountId);
+                    return `<div class="account-item">
+                        <div><div class="account-id">${id}</div><div class="account-state ${stateClass}">${stateText}</div></div>
+                        <button class="danger" data-remove-account="${id}">移除</button>
+                    </div>`;
+                }).join("");
+            } catch (err) {
+                accountTitle.textContent = "微信账号（状态获取失败）";
+            }
+        }
+
+        async function removeAccount(accountId) {
+            if (!confirm(`确定移除微信账号 ${accountId}？该账号需要重新扫码才能再次使用。`)) return;
+            try {
+                await requestJson("/api/v1/weixin/accounts/remove", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ account_id: accountId }),
+                });
+                setStatus("账号已移除", "ok");
+                await refreshAccounts();
+            } catch (err) {
+                setStatus(err.message, "err");
+            }
+        }
+
+        async function startLogin() {
+            if (waiting) return;
+            await refreshAccounts();
+            if (Number(accountState.account_count || 0) >= Number(accountState.max_accounts || 10)) {
+                setStatus("已达到微信账号上限，请先移除不用的账号。", "err");
+                return;
+            }
+            startBtn.disabled = true;
+            openLink.style.display = "none";
+            meta.textContent = "";
+            qrWrap.innerHTML = `<div class="placeholder">正在生成二维码...</div>`;
+            setStatus("正在请求登录二维码...");
+
+            try {
+                const data = await requestJson("/api/v1/weixin/login/qr/start", { method: "POST" });
+                const qrcodeUrl = data.qrcodeUrl;
+                sessionKey = data.sessionKey;
+                if (!qrcodeUrl || !sessionKey) {
+                    throw new Error("登录接口未返回 qrcodeUrl 或 sessionKey");
+                }
+
+                const imgUrl = `/api/v1/weixin/login/qr/image?data=${encodeURIComponent(qrcodeUrl)}`;
+                qrWrap.innerHTML = `<img src="${imgUrl}" alt="微信登录二维码">`;
+                openLink.href = qrcodeUrl;
+                openLink.style.display = "inline-block";
+                meta.textContent = `sessionKey: ${redact(sessionKey)}`;
+                setStatus("二维码已生成，请用微信扫码确认。");
+                await waitLogin();
+            } catch (err) {
+                setStatus(err.message, "err");
+                qrWrap.innerHTML = `<div class="placeholder">生成失败，请检查 WEIXIN_ENABLED 和微信微服务状态</div>`;
+            } finally {
+                waiting = false;
+                await refreshAccounts();
+            }
+        }
+
+        async function waitLogin() {
+            waiting = true;
+            setStatus("等待扫码确认，最长等待 5 分钟...");
+            const result = await requestJson("/api/v1/weixin/login/qr/wait", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ session_key: sessionKey }),
+            });
+
+            if (!result.success) {
+                throw new Error(result.message || "扫码登录未成功");
+            }
+
+            setStatus("扫码登录成功，正在启动微信消息监听...", "ok");
+            const started = await requestJson("/api/v1/weixin/start", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ account_id: result.accountId || "" }),
+            });
+            setStatus(`${result.message || "登录成功"}\n${started.message || "微信机器人监听已启动"}`, "ok");
+            meta.textContent = [
+                result.accountId ? `accountId: ${result.accountId}` : "",
+                result.userId ? `userId: ${result.userId}` : "",
+                result.botToken ? `botToken: ${redact(result.botToken)}` : "",
+            ].filter(Boolean).join("\n");
+            await refreshAccounts();
+        }
+
+        startBtn.addEventListener("click", startLogin);
+        accountList.addEventListener("click", (event) => {
+            const button = event.target.closest("[data-remove-account]");
+            if (button) removeAccount(button.dataset.removeAccount);
+        });
+        refreshAccounts();
+        setInterval(refreshAccounts, 10000);
+    </script>
+</body>
+</html>

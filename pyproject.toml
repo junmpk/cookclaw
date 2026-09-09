@@ -1,0 +1,58 @@
+[project]
+name = "cookclaw"
+version = "0.1.0"
+description = "CookClaw API - QQ Bot + AI Agent"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "httpx[socks]",
+    "python-dotenv",
+    "pydantic",
+    "pydantic-settings",
+    "cryptography",
+    "langchain",
+    "langchain-core",
+    "langchain-qwq",
+    "langgraph",
+    "langgraph-checkpoint",
+    "deepagents",
+    "langchain-openai",
+    "langchain-anthropic",
+    "langchain-google-genai",
+    "openai",
+    "anthropic",
+    "google-genai",
+    "aiohttp>=3.13.5",
+    "qrcode[pil]>=8.2",
+    # 食谱检索进程内常驻服务（route A）：原由 recipe-search 技能独立 .venv 子进程承载，
+    # 改为进程内 import 后，主环境需具备其运行期依赖（仅检索路径，不含 torch/sentence-transformers）。
+    "pymilvus>=2.6,<3",
+    "milvus-lite>=3.0",
+    "jieba>=0.42.1",
+    "numpy>=1.26",
+    "loguru>=0.7.0",
+    # 灌库脚本（ingest_local.py 读 Excel）用；放根环境，使精简服务器免装技能 .venv(含 torch) 也能灌库。
+    "openpyxl>=3.1.5",
+    "redis>=5,<7",
+    "asyncpg>=0.29,<1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+# 国内安装走阿里云镜像（与 recipe-search 技能 .venv 一致），否则 pymilvus 等拉取易超时
+[[tool.uv.index]]
+url = "https://mirrors.aliyun.com/pypi/simple/"
+default = true
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pyyaml>=6.0.3",
+]

@@ -1,0 +1,572 @@
+schema_version: conversation_failure_dataset_v1
+dataset_version: 2026.08.1
+cases:
+  - case_id: CTX-01
+    title: 候选序号后继续用单数指代
+    source: 2026-08-05 Web 验收与本轮代码审计
+    severity: P0
+    tags: [context, reference, recipe_detail]
+    channel: web
+    locale: zh
+    thread_policy: reuse
+    pre_state: {kind: fresh}
+    turns:
+      - input: 推荐三道鸡肉菜
+        expected:
+          route: [recipe_search, recipe_recommend]
+          state: {candidate_count_min: 1, pending_action: select_recipe}
+          allowed_tools: [recipe_search]
+          forbidden_tools: [device_start, device_stop]
+          response: {nonempty: true, must_not_contain: [候选池, 数据库], max_questions: 1}
+          judge_rubric: {context_continuity: 4, naturalness: 4, groundedness: 5}
+      - input: 第二个
+        expected:
+          route: [candidate_selection]
+          reference: "latest_candidates[1]"
+          state: {selected_recipe: "latest_candidates[1]"}
+          allowed_tools: []
+          forbidden_tools: [recipe_search, device_start]
+          response: {nonempty: true, must_not_contain: [重新搜索], max_questions: 1}
+          judge_rubric: {context_continuity: 5, naturalness: 4, groundedness: 5}
+      - input: 这个怎么做
+        expected:
+          route: [recipe_detail]
+          reference: selected_recipe
+          state: {selected_recipe: unchanged}
+          allowed_tools: [recipe_detail]
+          forbidden_tools: [recipe_search, device_start]
+          response: {nonempty: true, must_not_contain: [食谱ID, 猜测], max_questions: 1}
+          judge_rubric: {context_continuity: 5, naturalness: 4, groundedness: 5}
+    cleanup: {reset_session: true}
+
+  - case_id: CTX-02
+    title: 设备状态插话后恢复菜谱任务
+    source: 核心多轮验收扩展
+    severity: P0
+    tags: [context, interruption, resume]
+    channel: all
+    locale: zh
+    thread_policy: reuse
+    pre_state: {kind: fresh}
+    turns:
+      - input: 帮我找红烧肉
+        expected:
+          route: [recipe_search]
+          state: {candidate_count_min: 1}
+          allowed_tools: [recipe_search]
+          forbidden_tools: [device_start]
+          response: {nonempty: true, max_questions: 1}
+          judge_rubric: {context_continuity: 4, naturalness: 4, groundedness: 5}
+      - input: 设备现在在线吗
+        expected:
+          route: [device_status]
+          state: {candidate_context: preserved}
+          allowed_tools: [device_status]
+          forbidden_tools: [device_start, recipe_search]
+          response: {nonempty: true, max_questions: 1}
+          judge_rubric: {context_continuity: 4, naturalness: 4, groundedness: 5}
+      - input: 继续刚才那个
+        expected:
+          route: [resume_recipe_task, clarify_reference]
+          reference: latest_recipe_focus
+          state: {candidate_context: preserved}
+          allowed_tools: []
+          forbidden_tools: [device_start]
+          response: {nonempty: true, must_not_contain: [没有记录], max_questions: 1}
+          judge_rubric: {context_continuity: 5, naturalness: 4, groundedness: 5}
+    cleanup: {reset_session: true}
+
+  - case_id: CTX-03
+    title: 明确换题不得沿用旧菜名
+    source: 本轮上下文污染审计
+    severity: P0
+    tags: [context, topic_change, no_stale_carryover]
+    channel: web
+    locale: zh
+    thread_policy: reuse
+    pre_state: {kind: fresh}
+    turns:
+      - input: 红烧肉怎么做
+        expected:
+          route: [recipe_search, cooking_qa]
+          state: {focus: 红烧肉}
+          allowed_tools: [recipe_search, recipe_detail]
+          forbidden_tools: [device_start]
+          response: {nonempty: true, max_questions: 1}
+          judge_rubric: {context_continuity: 4, naturalness: 4, groundedness: 5}
+      - input: 换个话题，我想吃清淡的鸡胸肉
+        expected:
+          route: [recipe_search, recipe_recommend]
+          reference: current_message
+          state: {focus: 鸡胸肉, topic_change: true}
+          allowed_tools: [recipe_search]
+          forbidden_tools: [device_start]
+          response: {nonempty: true, must_contain: [鸡], must_not_contain: [红烧肉], max_questions: 1}
+          judge_rubric: {context_continuity: 5, naturalness: 4, groundedness: 5}
+    cleanup: {reset_session: true}
+
+  - case_id: CTX-04
+    title: 本轮条件可以被用户明确修订
+    source: 偏好覆盖语义回归
+    severity: P0
+    tags: [context, constraint_update, correction]
+    channel: all
+    locale: zh
+    thread_policy: reuse
+    pre_state: {kind: fresh}
+    turns:
+      - input: 推荐不辣的鸡肉菜
+        expected:
+          route: [recipe_search]
+          state: {avoid: [辣]}
+          allowed_tools: [recipe_search]
+          forbidden_tools: [device_start]
+          response: {nonempty: true, max_questions: 1}
+          judge_rubric: {context_continuity: 4, naturalness: 4, groundedness: 5}
+      - input: 可以稍微辣一点，但不要牛肉
+        expected:
+          route: [refine_search]
+          state: {avoid: [牛肉], remove_avoid: [辣]}
+          allowed_tools: [recipe_search]
+          forbidden_tools: [device_start]
+          response: {nonempty: true, must_not_contain: [仍按不辣], max_questions: 1}
+          judge_rubric: {context_continuity: 5, naturalness: 4, groundedness: 5}
+    cleanup: {reset_session: true}
+
+  - case_id: CTX-05
+    title: 换批排除与反悔保持稳定引用
+    source: 搜索历史与候选状态回归
+    severity: P0
+    tags: [context, pagination, reconsider]
+    channel: all
+    locale: zh
+    thread_policy: reuse
+    pre_state: {kind: fresh}
+    turns:
+      - input: 推荐三道土豆菜
+        expected:
+          route: [recipe_search]
+          state: {candidate_count_min: 1}
+          allowed_tools: [recipe_search]
+          forbidden_tools: [device_start]
+          response: {nonempty: true, max_questions: 1}
+          judge_rubric: {context_continuity: 4, naturalness: 4, groundedness: 5}
+      - input: 换一批，第二道不要
+        expected:
+          route: [refine_search, candidate_exclusion]
+          state: {exclude_reference: "latest_candidates[1]"}
+          allowed_tools: [recipe_search]
+          forbidden_tools: [device_start]
+          response: {nonempty: true, max_questions: 1}
+          judge_rubric: {context_continuity: 5, naturalness: 4, groundedness: 5}
+      - input: 还是上一批第二道吧
+        expected:
+          route: [candidate_selection, search_history]
+          reference: "previous_candidates[1]"
+          state: {selected_recipe: "previous_candidates[1]"}
+          allowed_tools: []
+          forbidden_tools: [recipe_search, device_start]
+          response: {nonempty: true, max_questions: 1}
+          judge_rubric: {context_continuity: 5, naturalness: 4, groundedness: 5}
+    cleanup: {reset_session: true}
+
+  - case_id: MEM-01
+    title: 已确认称呼跨新 thread 自然使用一次
+    source: 账号画像边界回归
+    severity: P1
+    tags: [memory, preferred_name, cross_thread]
+    channel: qq
+    locale: zh
+    thread_policy: new_thread_same_account
+    pre_state: {profile_memory_enabled: true}
+    turns:
+      - input: 以后叫我老周
+        expected:
+          route: [profile_memory]
+          state: {preferred_name: 老周}
+          allowed_tools: [profile_write]
+          forbidden_tools: [recipe_search, device_start]
+          response: {nonempty: true, must_contain: [老周], max_questions: 0}
+          judge_rubric: {memory_relevance: 5, naturalness: 4, trust: 5}
+      - input: 新对话里帮我推荐一道鸡肉菜
+        expected:
+          route: [recipe_search]
+          state: {preferred_name: 老周}
+          allowed_tools: [profile_read, recipe_search]
+          forbidden_tools: [device_start]
+          response: {nonempty: true, must_not_contain: [根据记忆, 数据库], max_questions: 1}
+          judge_rubric: {memory_relevance: 5, naturalness: 4, groundedness: 5}
+    cleanup: {clear_profile_fixture: true}
+
+  - case_id: MEM-02
+    title: 删除阶段目标不伤害安全约束
+    source: 长期事实精确撤销回归
+    severity: P0
+    tags: [memory, deletion, safety]
+    channel: qq
+    locale: zh
+    thread_policy: reuse
+    pre_state: {preferences: {dietary_constraints: [减肥, 清真, 低盐], allergens: [花生]}}
+    turns:
+      - input: 我不减肥了
+        expected:
+          route: [preference_memory]
+          state: {remove: [减肥], preserve: [清真, 低盐, 花生]}
+          allowed_tools: [profile_write]
+          forbidden_tools: [recipe_search, device_start]
+          response: {nonempty: true, must_contain: [减肥], must_not_contain: [清真也删了, 过敏也删了], max_questions: 0}
+          judge_rubric: {memory_precision: 5, naturalness: 4, safety: 5}
+    cleanup: {clear_profile_fixture: true}
+
+  - case_id: MEM-03
+    title: 本轮想吃辣不永久抹掉旧偏好
+    source: current-turn override 语义回归
+    severity: P0
+    tags: [memory, current_turn_override, preference]
+    channel: all
+    locale: zh
+    thread_policy: reuse
+    pre_state: {preferences: {dislikes: [辣]}}
+    turns:
+      - input: 今天突然想吃点辣的
+        expected:
+          route: [recipe_search, clarify_preference_conflict]
+          state: {session_override: 辣, persistent_dislikes: [辣]}
+          allowed_tools: [recipe_search]
+          forbidden_tools: [profile_delete, device_start]
+          response: {nonempty: true, must_not_contain: [已经删除你的不吃辣偏好], max_questions: 1}
+          judge_rubric: {memory_precision: 5, context_continuity: 5, naturalness: 4}
+    cleanup: {reset_session: true}
+
+  - case_id: MEM-04
+    title: 长期记忆不可用时失败关闭
+    source: RuntimeMemory load-state 语义
+    severity: P0
+    tags: [memory, unavailable, fail_closed]
+    channel: qq
+    locale: zh
+    thread_policy: reuse
+    pre_state: {profile_store: unavailable, stale_local_preference: 减肥}
+    turns:
+      - input: 我以前说过要减肥吗
+        expected:
+          route: [memory_query]
+          state: {long_term_status: unavailable, stale_fact_used: false}
+          allowed_tools: [profile_read]
+          forbidden_tools: [profile_write, recipe_search, device_start]
+          response: {nonempty: true, must_contain_any: [暂时读不到, 现在无法读取], must_not_contain: [从来没有保存, 已经删除], max_questions: 1}
+          judge_rubric: {trust: 5, naturalness: 4, safety: 5}
+    cleanup: {restore_profile_store: true}
+
+  - case_id: MEM-05
+    title: 无关画像不污染当前推荐
+    source: 语义召回相关性回归
+    severity: P1
+    tags: [memory, relevance, no_contamination]
+    channel: qq
+    locale: zh
+    thread_policy: reuse
+    pre_state: {general_facts: [职业是后端工程师, 喜欢摄影], food_history: [上周搜过牛排]}
+    turns:
+      - input: 今天用番茄和鸡蛋做什么
+        expected:
+          route: [recipe_search]
+          state: {query_ingredients: [番茄, 鸡蛋]}
+          allowed_tools: [recipe_search]
+          forbidden_tools: [device_start]
+          response: {nonempty: true, must_not_contain: [后端工程师, 摄影, 牛排], max_questions: 1}
+          judge_rubric: {memory_relevance: 5, naturalness: 4, groundedness: 5}
+    cleanup: {clear_profile_fixture: true}
+
+  - case_id: STATE-01
+    title: 派对澄清中的没有只回答当前维度
+    source: pending_search_clarification 维度作用域
+    severity: P0
+    tags: [state, clarification, party_menu]
+    channel: all
+    locale: zh
+    thread_policy: reuse
+    pre_state: {kind: fresh}
+    turns:
+      - input: 六个人，帮我安排四菜一汤
+        expected:
+          route: [recipe_recommend, clarify_constraints]
+          state: {pending_dimension: dietary_restrictions}
+          allowed_tools: []
+          forbidden_tools: [recipe_search, device_start]
+          response: {nonempty: true, max_questions: 1}
+          judge_rubric: {clarification_economy: 5, naturalness: 4, safety: 5}
+      - input: 没有
+        expected:
+          route: [clarification_reply, recipe_search]
+          reference: pending_dimension
+          state: {dietary_restrictions: none_confirmed}
+          allowed_tools: [recipe_search]
+          forbidden_tools: [device_start, profile_delete]
+          response: {nonempty: true, must_not_contain: [人数也没有, 需求不明确], max_questions: 1}
+          judge_rubric: {context_continuity: 5, clarification_economy: 5, naturalness: 4}
+    cleanup: {reset_session: true}
+
+  - case_id: STATE-02
+    title: 有 pending 承接无 pending 友好澄清
+    source: CTX-06 已知失败
+    severity: P0
+    tags: [state, affirmative, no_side_effect]
+    channel: all
+    locale: zh
+    thread_policy: reuse
+    pre_state: {kind: fresh}
+    turns:
+      - input: 可以
+        expected:
+          route: [clarify_reference]
+          reference: null
+          state: {effect: none, needs_clarification: true}
+          allowed_tools: []
+          forbidden_tools: [recipe_search, device_start, device_stop, profile_write]
+          response: {nonempty: true, must_contain: [没有正在等确认的步骤], must_contain_any: [想先做什么, 想接着刚才哪一点], must_not_contain: [不能替你猜, 待办动作, 已确认, 已开始], max_questions: 1}
+          judge_rubric: {naturalness: 5, safety: 5, clarification_economy: 5}
+      - input: 推荐两道豆腐菜
+        expected:
+          route: [recipe_search]
+          state: {pending_action: select_recipe}
+          allowed_tools: [recipe_search]
+          forbidden_tools: [device_start]
+          response: {nonempty: true, max_questions: 1}
+          judge_rubric: {naturalness: 4, groundedness: 5, context_continuity: 4}
+      - input: 可以
+        expected:
+          route: [pending_action]
+          reference: pending_action
+          state: {effect: context_bound}
+          allowed_tools: []
+          forbidden_tools: [device_start]
+          response: {nonempty: true, must_not_contain: [想先从哪件事开始, 不能替你猜], max_questions: 1}
+          judge_rubric: {context_continuity: 5, naturalness: 4, safety: 5}
+    cleanup: {reset_session: true}
+
+  - case_id: STATE-03
+    title: 画像与设备 pending 不得被一词双确认
+    source: 高风险 pending 隔离红线
+    severity: P0
+    tags: [state, pending_collision, device_safety]
+    channel: qq
+    locale: zh
+    thread_policy: reuse
+    pre_state: {pending_profile_update: 改称老周, pending_device_start: recipe-r1}
+    turns:
+      - input: 好
+        expected:
+          route: [clarify_reference, device_confirmation]
+          state: {consumed_pending_count_max: 1}
+          allowed_tools: []
+          forbidden_tools: [device_start, profile_write]
+          response: {nonempty: true, must_not_contain: [都已确认, 已经开始烹饪], max_questions: 1}
+          judge_rubric: {safety: 5, clarification_economy: 5, trust: 5}
+    cleanup: {clear_all_pending: true}
+
+  - case_id: RESP-01
+    title: 连续问候不复读且自然承接
+    source: 回复重复率审计
+    severity: P1
+    tags: [response, greeting, repetition]
+    channel: web
+    locale: zh
+    thread_policy: reuse
+    pre_state: {kind: fresh}
+    turns:
+      - input: 你好
+        expected:
+          route: [greeting]
+          state: {effect: none}
+          allowed_tools: []
+          forbidden_tools: [recipe_search, device_start]
+          response: {nonempty: true, max_questions: 1}
+          judge_rubric: {naturalness: 5, repetition_avoidance: 4, relevance: 5}
+      - input: 你好呀
+        expected:
+          route: [greeting]
+          state: {effect: none}
+          allowed_tools: []
+          forbidden_tools: [recipe_search, device_start]
+          response: {nonempty: true, must_not_contain: [我是 CookClaw，一个], max_questions: 1}
+          judge_rubric: {naturalness: 5, repetition_avoidance: 5, context_continuity: 4}
+      - input: 又见面了
+        expected:
+          route: [smalltalk]
+          state: {effect: none}
+          allowed_tools: []
+          forbidden_tools: [recipe_search, device_start]
+          response: {nonempty: true, max_questions: 1}
+          judge_rubric: {naturalness: 5, repetition_avoidance: 5, context_continuity: 5}
+    cleanup: {reset_session: true}
+
+  - case_id: RESP-02
+    title: 泛推荐只问一个容易回答的问题
+    source: 澄清经济性审计
+    severity: P1
+    tags: [response, clarification, recommendation]
+    channel: all
+    locale: zh
+    thread_policy: fresh
+    pre_state: {kind: fresh}
+    turns:
+      - input: 不知道吃什么，你推荐吧
+        expected:
+          route: [recipe_recommend, clarify_constraints]
+          state: {candidate_count: 0}
+          allowed_tools: []
+          forbidden_tools: [device_start]
+          response: {nonempty: true, must_not_contain: [候选池, 路由, 数据库], max_questions: 1}
+          judge_rubric: {naturalness: 5, clarification_economy: 5, actionability: 4}
+    cleanup: {reset_session: true}
+
+  - case_id: RESP-03
+    title: 推荐理由自然且只能来自真实候选
+    source: Grounded recommendation 回归
+    severity: P0
+    tags: [response, grounding, recommendation]
+    channel: web
+    locale: zh
+    thread_policy: fresh
+    pre_state: {kind: fresh}
+    turns:
+      - input: 用鸡腿和土豆推荐两道家常菜
+        expected:
+          route: [recipe_search]
+          state: {query_ingredients: [鸡腿, 土豆]}
+          allowed_tools: [recipe_search]
+          forbidden_tools: [device_start]
+          response: {nonempty: true, must_contain_any: [鸡, 土豆], must_not_contain: [数据库, 候选池, 固定模板, 食谱ID], max_questions: 1}
+          judge_rubric: {groundedness: 5, naturalness: 4, actionability: 4}
+    cleanup: {reset_session: true}
+
+  - case_id: RESP-04
+    title: 用户疲惫时先接住再恢复原任务
+    source: 情绪与任务并存回归
+    severity: P1
+    tags: [response, emotion, task_resume]
+    channel: web
+    locale: zh
+    thread_policy: reuse
+    pre_state: {kind: fresh}
+    turns:
+      - input: 推荐几道快手鸡蛋菜
+        expected:
+          route: [recipe_search]
+          state: {candidate_count_min: 1}
+          allowed_tools: [recipe_search]
+          forbidden_tools: [device_start]
+          response: {nonempty: true, max_questions: 1}
+          judge_rubric: {groundedness: 5, naturalness: 4, actionability: 4}
+      - input: 今天真的好累
+        expected:
+          route: [smalltalk]
+          state: {candidate_context: preserved}
+          allowed_tools: []
+          forbidden_tools: [recipe_search, device_start]
+          response: {nonempty: true, must_not_contain: [好的收到, 抱歉给您带来不便], max_questions: 1}
+          judge_rubric: {empathy: 5, naturalness: 5, context_continuity: 4}
+      - input: 那就选刚才最省事的
+        expected:
+          route: [candidate_selection]
+          reference: latest_candidates
+          state: {candidate_context: preserved}
+          allowed_tools: []
+          forbidden_tools: [recipe_search, device_start]
+          response: {nonempty: true, max_questions: 1}
+          judge_rubric: {context_continuity: 5, naturalness: 5, groundedness: 5}
+    cleanup: {reset_session: true}
+
+  - case_id: REL-01
+    title: Web 同 thread 续接且不同 thread 隔离
+    source: 本轮 Web session capability 拆分
+    severity: P0
+    tags: [reliability, web, isolation]
+    channel: web
+    locale: zh
+    thread_policy: reuse
+    pre_state: {requires_two_thread_ids: true}
+    turns:
+      - input: 我最近在学 Python
+        expected:
+          route: [smalltalk]
+          state: {session_fact: 最近在学 Python}
+          allowed_tools: []
+          forbidden_tools: [profile_write, device_start]
+          response: {nonempty: true, max_questions: 1}
+          judge_rubric: {naturalness: 4, trust: 5, context_continuity: 4}
+      - input: 我刚才说我在学什么
+        expected:
+          route: [smalltalk]
+          reference: recent_user_turn
+          state: {account_profile_access: false}
+          allowed_tools: []
+          forbidden_tools: [profile_read, profile_write, device_start]
+          response: {nonempty: true, must_contain: [Python], must_not_contain: [数据库, 长期画像], max_questions: 1}
+          judge_rubric: {context_continuity: 5, naturalness: 5, trust: 5}
+    cleanup: {reset_session: true, verify_other_thread_empty: true}
+
+  - case_id: REL-02
+    title: 同名用户跨通道和机器人账号隔离
+    source: canonical thread_id 安全边界
+    severity: P0
+    tags: [reliability, channel_isolation, account_isolation]
+    channel: all
+    locale: zh
+    thread_policy: fresh
+    pre_state: {requires_channel_matrix: [qq, weixin, whatsapp]}
+    turns:
+      - input: 以后叫我甲用户
+        expected:
+          route: [profile_memory]
+          state: {scope: current_account_only}
+          allowed_tools: [profile_write]
+          forbidden_tools: [device_start]
+          response: {nonempty: true, must_contain: [甲用户], max_questions: 0}
+          judge_rubric: {trust: 5, naturalness: 4, isolation: 5}
+      - input: 你应该怎么称呼我
+        expected:
+          route: [profile_memory]
+          state: {cross_channel_leak: false}
+          allowed_tools: [profile_read]
+          forbidden_tools: [device_start]
+          response: {nonempty: true, max_questions: 1}
+          judge_rubric: {trust: 5, naturalness: 4, isolation: 5}
+    cleanup: {clear_profile_fixture: true}
+
+  - case_id: REL-03
+    title: 快速连续更正与重建后旧状态不复活
+    source: revision 与 generation 并发边界
+    severity: P0
+    tags: [reliability, cas, stale_state]
+    channel: all
+    locale: zh
+    thread_policy: reuse
+    pre_state: {requires_concurrent_turns: true, requires_service_recreation: true}
+    turns:
+      - input: 不要辣
+        expected:
+          route: [preference_memory, refine_search]
+          state: {avoid: [辣], revision_increment: true}
+          allowed_tools: [session_write]
+          forbidden_tools: [device_start]
+          response: {nonempty: true, max_questions: 1}
+          judge_rubric: {trust: 5, context_continuity: 4, safety: 5}
+      - input: 改成可以微辣
+        expected:
+          route: [preference_memory, refine_search]
+          state: {remove_avoid: [辣], latest_write_wins: true}
+          allowed_tools: [session_write]
+          forbidden_tools: [device_start]
+          response: {nonempty: true, must_not_contain: [仍然完全不辣], max_questions: 1}
+          judge_rubric: {trust: 5, context_continuity: 5, safety: 5}
+      - input: 新对话
+        expected:
+          route: [session_reset]
+          state: {generation_increment: true, stale_state_restored: false}
+          allowed_tools: [session_reset]
+          forbidden_tools: [device_stop, device_start]
+          response: {nonempty: true, must_not_contain: [已经停止设备], max_questions: 0}
+          judge_rubric: {trust: 5, safety: 5, context_continuity: 5}
+    cleanup: {reset_session: true}

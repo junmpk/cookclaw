@@ -1,0 +1,127 @@
+[
+  {
+    "id": "greeting",
+    "utterance": "晚上好",
+    "context": {},
+    "expected_actions": ["conversation.respond"],
+    "risk": "low"
+  },
+  {
+    "id": "exact_recipe_search",
+    "utterance": "帮我找红烧肉",
+    "context": {},
+    "expected_actions": ["recipe.search"],
+    "risk": "low"
+  },
+  {
+    "id": "diet_recommendation",
+    "utterance": "最近在减脂，晚饭吃什么",
+    "context": {
+      "stable_constraints": {
+        "dietary_constraints": ["减脂"]
+      }
+    },
+    "expected_actions": ["recipe.recommend", "conversation.clarify"],
+    "risk": "low"
+  },
+  {
+    "id": "party_menu",
+    "utterance": "六个人聚餐，给我配四菜一汤",
+    "context": {},
+    "expected_actions": ["menu.plan"],
+    "risk": "low"
+  },
+  {
+    "id": "compare_current_candidates",
+    "utterance": "这几道哪道最省事",
+    "context": {
+      "latest_candidates": [
+        {"cookId": "r1", "name": "番茄炒蛋"},
+        {"cookId": "r2", "name": "清蒸鲈鱼"}
+      ]
+    },
+    "expected_actions": ["candidate.compare"],
+    "risk": "low"
+  },
+  {
+    "id": "restore_previous_candidates",
+    "utterance": "回到上一批",
+    "context": {
+      "previous_candidate_count": 3
+    },
+    "expected_actions": ["candidate.restore_previous"],
+    "risk": "low"
+  },
+  {
+    "id": "candidate_selection",
+    "utterance": "选第二个",
+    "context": {
+      "latest_candidates": [
+        {"cookId": "r1", "name": "番茄炒蛋"},
+        {"cookId": "r2", "name": "清蒸鲈鱼"}
+      ]
+    },
+    "expected_actions": ["candidate.select"],
+    "risk": "medium"
+  },
+  {
+    "id": "recipe_detail",
+    "utterance": "看看第二道的详细步骤",
+    "context": {
+      "latest_candidates": [
+        {"cookId": "r1", "name": "番茄炒蛋"},
+        {"cookId": "r2", "name": "清蒸鲈鱼"}
+      ]
+    },
+    "expected_actions": ["recipe.detail"],
+    "risk": "low"
+  },
+  {
+    "id": "device_prepare",
+    "utterance": "就做清蒸鲈鱼",
+    "context": {
+      "selected_recipe": {"cookId": "r2", "name": "清蒸鲈鱼"}
+    },
+    "expected_actions": ["device.prepare"],
+    "risk": "medium"
+  },
+  {
+    "id": "active_device_stop",
+    "utterance": "停止",
+    "context": {
+      "active_cooking": {"cookId": "r2"}
+    },
+    "expected_actions": ["deterministic_handler"],
+    "risk": "high"
+  },
+  {
+    "id": "pending_device_confirm",
+    "utterance": "确认开始",
+    "context": {
+      "pending_device_start": {"cookId": "r2"}
+    },
+    "expected_actions": ["deterministic_handler"],
+    "risk": "high"
+  },
+  {
+    "id": "affirmative_without_pending",
+    "utterance": "可以",
+    "context": {},
+    "expected_actions": ["conversation.clarify"],
+    "risk": "low"
+  },
+  {
+    "id": "public_web_fact",
+    "utterance": "今天上海天气怎么样",
+    "context": {},
+    "expected_actions": ["web.search"],
+    "risk": "low"
+  },
+  {
+    "id": "cooking_qa",
+    "utterance": "炒鸡蛋怎么才能更嫩",
+    "context": {},
+    "expected_actions": ["conversation.respond"],
+    "risk": "low"
+  }
+]
