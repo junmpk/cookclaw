@@ -1,5 +1,7 @@
 # CookClaw
 
+[中文 README](README.zh-CN.md)
+
 CookClaw is a portfolio-oriented AI cooking assistant backend built with Python and
 FastAPI. It demonstrates a production-minded Agent runtime: multi-channel request
 normalization, deterministic domain handlers, hybrid recipe retrieval, durable
@@ -101,4 +103,3 @@ See [the architecture document](docs/architecture.md),
 This repository is a technical showcase, not a hosted service or a production IoT
 SDK. Real-account channel acceptance, production infrastructure, proprietary recipe
 data and hardware-provider certification are outside the public repository.
-
