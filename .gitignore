@@ -75,3 +75,7 @@ yarn-error.log*
 .AppleDouble
 .LSOverride
 ._*
+# Three-agent demo runtime: source data, checkpoints, event history and local secrets.
+.demo/
+.env.demo
+!.env.demo.example

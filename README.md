@@ -77,6 +77,34 @@ curl http://127.0.0.1:8000/api/v1/health
 Recipe retrieval requires your own authorized dataset and either Milvus Lite or a
 Milvus server. No recipe workbook or production database is distributed here.
 
+### Public web demo
+
+The public checkout also contains a Web demo. Its left chat uses the same
+conversation entry point as the QQ/WhatsApp adapters. Ordinary turns stay in the
+shared runtime; an explicit request such as “ask the three experts to plan this
+meal” bridges the saved task state into the LangGraph three-agent workflow. Both
+paths use only the local demo database and a Mock device boundary:
+
+```bash
+uv run python -m app.demo.seed
+uv run uvicorn app.demo.server:app --host 127.0.0.1 --port 8010
+```
+
+Open <http://127.0.0.1:8010>. The left rail behaves like a WhatsApp-style kitchen
+chat: casual cooking questions, follow-up constraints, candidate replacement and
+recipe details stay in one shared conversation. Add an explicit “three-agent
+collaboration” request to see the graph nodes and reply “confirm” or “cancel” in
+the same thread; before confirmation, a message such as “replace option 2” creates
+a new checked graph version while preserving the other slots. The center cards display source recipe images;
+if a remote image is unavailable, the card keeps a visible fallback instead of
+blocking the workflow. Optional live model calls read `DASHSCOPE_API_KEY` from
+the local `.env`; rehearsal mode does not call a model.
+
+For interview demos, an optional bridge can route explicit multi-agent menu
+requests from QQ, Weixin, and WhatsApp into the same LangGraph. It is disabled
+by default and supports deterministic single-slot revisions such as “replace
+dish 2”; see [Phase 3 IM Graph bridge](docs/im-graph-phase3.md).
+
 ## Configuration
 
 The minimal public configuration is documented in `.env.example`. Important rules:

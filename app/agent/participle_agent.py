@@ -168,6 +168,15 @@ from app.orchestrator.turn.turn_orchestrator import (
 
 logger = logging.getLogger(__name__)
 
+# 可选的多 Agent Graph bridge 由应用 lifespan 注入。默认 None，普通部署和
+# 未灰度通道完全保持现有 Turn Runtime 行为。
+_im_graph_bridge = None
+
+
+def bind_im_graph_bridge(bridge) -> None:
+    global _im_graph_bridge
+    _im_graph_bridge = bridge
+
 # Demo detail completion is expensive and deterministic for the same Milvus snapshot.
 # Cache both successful completions and validated fallbacks briefly so repeated preview
 # and recording passes do not pay the same model latency again.
@@ -523,7 +532,7 @@ async def _clear_search_clarification_state(thread_id: str) -> None:
             pass
 
 
-async def _orchestrated_web_chat_stream(
+async def handle_web_turn(
     question: str,
     thread_id: str,
 ):
@@ -646,7 +655,12 @@ async def _orchestrated_web_chat_stream(
                 turn_lock = None
     # 生成、状态提交与 transcript 保存完成后再交给 SSE 传输层。这样慢客户端
     # 或背压不会继续占用同一 session 的完整 turn 锁。
-    yield content
+    return envelope
+
+
+async def _orchestrated_web_chat_stream(question: str, thread_id: str):
+    envelope = await handle_web_turn(question, thread_id)
+    yield WebResponseRenderer().render(envelope)
 
 
 async def chat_stream(question: str, thread_id: str = "default"):
@@ -4815,6 +4829,16 @@ async def _handle_pending_action(
         return None
     lang = action.get("lang") or detect_lang(question)
 
+    # A menu slot replacement must precede generic candidate exclusion.
+    # Otherwise “第二道换掉” only marks the old ID and never fills its slot.
+    if get_menu_task(thread_id) and (
+        _is_replace_one_request(question)
+        or re.search(r"换掉|替换|\breplace\b", question, flags=re.IGNORECASE)
+    ) and not re.search(r"(?:不要|别|不用).{0,3}(?:换|替换)", question):
+        return await _replace_pending_menu_slot(
+            thread_id, question, on_search_start=on_search_start,
+        )
+
     excluded_recipe = _candidate_exclusion_target(thread_id, question)
     if excluded_recipe:
         recipe_id = str(
@@ -5444,14 +5468,27 @@ async def qqbot_chat(
     response_type = None
     error_type = None
     try:
-        envelope = await _run_turn_orchestrator(
-            question,
-            thread_id=thread_id,
-            channel=channel,
-            on_search_start=on_search_start,
-            source_message_type=source_message_type,
-            trace_id=_trace.trace_id,
-        )
+        async def shared_runtime() -> ResponseEnvelope:
+            return await _run_turn_orchestrator(
+                question,
+                thread_id=thread_id,
+                channel=channel,
+                on_search_start=on_search_start,
+                source_message_type=source_message_type,
+                trace_id=_trace.trace_id,
+            )
+
+        if _im_graph_bridge is None:
+            envelope = await shared_runtime()
+        else:
+            from app.conversation.service import get_conversation_service
+
+            envelope = await _im_graph_bridge.handle(
+                question,
+                thread_id,
+                fallback=shared_runtime,
+                state_loader=get_conversation_service().load_task_state,
+            )
         response = IMResponseRenderer().render(envelope)
         response_type = envelope.response_type
         _trace.add_event(

@@ -90,6 +90,9 @@ async def search(query: str, top_k: int = 3, lang: Optional[str] = None) -> Opti
     服务不可用或异常时返回 None，由调用方回退子进程。
     lang：可选 zh|en，按原始用户输入显式指定检索语言（覆盖检索内部自动判定）。
     """
+    if os.getenv("RECIPE_SEARCH_BACKEND") == "public_demo":
+        from app.demo.shared_chat import search_public_recipes
+        return await search_public_recipes(query, top_k, lang)
     if not _load_tool():
         return None
     try:

@@ -3248,7 +3248,7 @@ def get_conversation_service() -> ConversationService:
 
     profile_default = "same" if mode == "memory" else "postgres"
     profile_mode = os.getenv("PROFILE_STORE", profile_default).strip().lower()
-    if profile_mode in {"same", "conversation"}:
+    if profile_mode in {"same", "conversation", "memory"}:
         if mode != "memory":
             raise ValueError(
                 "PROFILE_STORE must be 'postgres' when CONVERSATION_STORE='redis'"

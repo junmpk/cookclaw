@@ -250,6 +250,7 @@ def _display_tags(tags, lang: str) -> list[str]:
 _qq_adapter = None
 _qq_task = None
 _conversation_health_task = None
+_im_graph_bridge = None
 
 # WhatsApp 全局实例
 _wa_adapter = None
@@ -2111,7 +2112,7 @@ async def lifespan(app_instance: FastAPI):
     """FastAPI 生命周期管理 — 启动/关闭 QQ Bot、WhatsApp 和微信"""
     # FastAPI 启动时进入这里，退出时也会回到这里的 yield 之后。
     # 所有平台子进程、连接、任务都在这里统一管理。
-    global _qq_adapter, _qq_task, _conversation_health_task
+    global _qq_adapter, _qq_task, _conversation_health_task, _im_graph_bridge
     global _wa_adapter, _wa_subprocess, _wx_adapter, _wx_subprocess
 
     # ─── 检查共享记忆存储 ────────────────────────────────────────
@@ -2148,6 +2149,32 @@ async def lifespan(app_instance: FastAPI):
         logger.warning("食谱检索预热超时（>45s），忽略，运行时回退子进程")
     except Exception as e:
         logger.warning("食谱检索预热异常（忽略，运行时回退子进程）：error_type=%s", type(e).__name__)
+
+    # ─── 可选的三 Agent Graph bridge ───────────────────────────
+    # 只在显式灰度开关打开时注入 QQ/微信/WhatsApp 的共享入口。
+    if os.getenv("MULTI_AGENT_BRIDGE_ENABLED", "false").lower() == "true":
+        from pathlib import Path
+
+        from app.agent import participle_agent as _agent_module
+        from app.demo.im_bridge import IMGraphBridge
+
+        default_dir = Path(__file__).resolve().parents[1] / ".demo"
+        data_dir = Path(
+            os.getenv("MULTI_AGENT_DATA_DIR", str(default_dir))
+        ).expanduser()
+        if not (data_dir / "recipes.db").exists():
+            raise RuntimeError(
+                "MULTI_AGENT_BRIDGE_ENABLED=true，但公开演示食谱库不存在；"
+                "请先运行 python -m app.demo.seed"
+            )
+        _im_graph_bridge = await IMGraphBridge.create(data_dir)
+        _agent_module.bind_im_graph_bridge(_im_graph_bridge)
+        logger.info(
+            "三 Agent Graph bridge 已启用: mode=%s channels=qq,weixin,whatsapp",
+            os.getenv("MULTI_AGENT_BRIDGE_MODE", "live"),
+        )
+    else:
+        logger.info("三 Agent Graph bridge 未启用")
 
     # ─── 启动 QQ Bot ────────────────────────────────────────────
     # QQ Bot 是 Python 进程内直接连 QQ 网关，不需要额外 Node 服务。
@@ -2431,6 +2458,14 @@ async def lifespan(app_instance: FastAPI):
 
     from app.orchestrator.planning.shadow_compare import drain_shadow_tasks
     await drain_shadow_tasks(timeout_seconds=2.0, cancel_pending=True)
+
+    if _im_graph_bridge is not None:
+        from app.agent import participle_agent as _agent_module
+
+        _agent_module.bind_im_graph_bridge(None)
+        await _im_graph_bridge.close()
+        _im_graph_bridge = None
+        logger.info("三 Agent Graph bridge 已关闭")
 
     if _conversation_health_task and not _conversation_health_task.done():
         _conversation_health_task.cancel()
