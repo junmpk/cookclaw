@@ -13,14 +13,16 @@ from app.orchestrator.turn.runtime_models import ResponseEnvelope
 
 from .agents import Agents
 from .chat_intent import (
+    brief_from_search_request,
     brief_from_task_state,
     decision_from_chat,
-    requests_graph,
+    graph_routing_decision,
+    might_need_graph,
     requests_unspecified_adjustment,
     slot_adjustment_from_chat,
 )
 from .engine import Engine
-from .retrieval import RecipeStore
+from .retrieval import build_recipe_store, recipes_from_search_result
 from .storage import DemoStorage
 
 Fallback = Callable[[], Awaitable[ResponseEnvelope]]
@@ -34,6 +36,7 @@ class IMGraphBridge:
         self.engine = engine
         self.connection = connection
         self.recipes = recipes
+        self.recipe_backend = str(getattr(recipes, "backend_name", "injected"))
 
     @classmethod
     async def create(
@@ -46,7 +49,10 @@ class IMGraphBridge:
         data_dir.mkdir(parents=True, exist_ok=True)
         storage = DemoStorage(data_dir / "runs.sqlite")
         storage.mark_interrupted()
-        recipes = recipe_store or RecipeStore(data_dir / "recipes.db")
+        recipes = recipe_store or build_recipe_store(
+            data_dir / "recipes.db",
+            backend=os.getenv("DEMO_RECIPE_BACKEND", "auto"),
+        )
         connection = await aiosqlite.connect(data_dir / "checkpoints.sqlite")
         saver = AsyncSqliteSaver(connection)
         return cls(
@@ -68,9 +74,40 @@ class IMGraphBridge:
         fallback: Fallback,
         state_loader: StateLoader,
     ) -> ResponseEnvelope:
+        existing = await self.handle_existing(question, thread_id)
+        if existing is not None:
+            return existing
+
+        # 兼容旧调用方式。主 IM Runtime 使用 workflow_handoff()，不会先完成
+        # fallback 再启动 Graph。
+        envelope = await fallback()
+        if not might_need_graph(question):
+            return envelope
+
+        state = await state_loader(thread_id)
+        mode = os.getenv("MULTI_AGENT_BRIDGE_MODE", "live").strip().lower()
+        brief = brief_from_task_state(
+            state,
+            mode="rehearsal" if mode == "rehearsal" else "live",
+        )
+        if brief is None:
+            return envelope
+        routing = graph_routing_decision(question, brief)
+        if not routing.use_graph:
+            return envelope
+        self.engine.check_mode(brief)
+        run_id = self.engine.start_chat_graph(thread_id, brief)
+        return self._run_response(await self.engine.wait(run_id))
+
+    async def handle_existing(
+        self,
+        question: str,
+        thread_id: str,
+    ) -> ResponseEnvelope | None:
+        """先处理已绑定 Graph 的确认/修订，不触发共享 Runtime。"""
         channel = str(thread_id or "").split(":", 1)[0].lower()
         if channel not in {"qq", "weixin", "whatsapp"}:
-            return await fallback()
+            return None
 
         linked = self.engine.chat_run(thread_id)
         if linked and linked["status"] == "running":
@@ -108,20 +145,39 @@ class IMGraphBridge:
             updated = await self.engine.wait(linked["id"])
             return self._run_response(updated)
 
-        envelope = await fallback()
-        if not requests_graph(question):
-            return envelope
+        return None
 
-        state = await state_loader(thread_id)
+    async def workflow_handoff(
+        self,
+        question: str,
+        thread_id: str,
+        outcome,
+    ) -> ResponseEnvelope | None:
+        """在统一 Turn 的 Recipe handler 前接管完整复杂菜单。"""
+        channel = str(thread_id or "").split(":", 1)[0].lower()
+        if channel not in {"qq", "weixin", "whatsapp"}:
+            return None
+        if outcome.kind != "menu_plan" or outcome.search_request is None:
+            return None
         mode = os.getenv("MULTI_AGENT_BRIDGE_MODE", "live").strip().lower()
-        brief = brief_from_task_state(
-            state,
+        brief = brief_from_search_request(
+            outcome.search_request,
             mode="rehearsal" if mode == "rehearsal" else "live",
         )
         if brief is None:
-            return envelope
+            return None
+        routing = graph_routing_decision(question, brief)
+        if not routing.use_graph:
+            return None
+        candidates = recipes_from_search_result(outcome.search_result)
+        if not candidates:
+            return None
         self.engine.check_mode(brief)
-        run_id = self.engine.start_chat_graph(thread_id, brief)
+        run_id = self.engine.start_chat_graph(
+            thread_id,
+            brief,
+            seed_candidates=candidates,
+        )
         return self._run_response(await self.engine.wait(run_id))
 
     @staticmethod
@@ -136,8 +192,16 @@ class IMGraphBridge:
 
     def _run_response(self, run: dict, *, adjusted: bool = False) -> ResponseEnvelope:
         status = str(run.get("status") or "error")
+        selected_agents = list(
+            (run.get("state") or {})
+            .get("complexity_profile", {})
+            .get("selected_agents", [])
+        )
         if status == "running":
-            return self._text("三位 Agent 正在协作，请稍后再发送一条消息查看结果。")
+            return self._text(
+                f"多 Agent 团队正在协作，本轮已动态启用 {len(selected_agents) or 3} 个角色；"
+                "请稍后再发送一条消息查看结果。"
+            )
         if status == "error":
             return self._text("本轮协作没有完成，请检查食谱库、模型配置与网络后重试。")
         if status == "blocked":
@@ -178,7 +242,7 @@ class IMGraphBridge:
         opening = (
             "已按你的要求调整指定菜品，其他菜单项保持不变。"
             if adjusted
-            else "三位 Agent 已完成食谱研究、饮食分析和菜单校验。"
+            else f"多 Agent 团队已完成协作，本轮实际启用 {len(selected_agents) or 3} 个专业角色。"
         )
         return ResponseEnvelope(
             response_type="menu_plan",
@@ -195,6 +259,11 @@ class IMGraphBridge:
                 ),
                 "graph_run_id": str(run.get("id") or ""),
                 "graph_status": status,
+                "complexity_profile": (
+                    state.get("complexity_profile") or {}
+                ),
+                "inventory": state.get("inventory") or {},
+                "schedule": state.get("schedule") or {},
             },
             handled_by="langgraph_bridge",
         )

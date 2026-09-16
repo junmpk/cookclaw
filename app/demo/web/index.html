@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CookClaw · 厨房助手</title>
-  <link rel="stylesheet" href="/assets/style.css?v=chat-v4">
-  <script src="/assets/app.js?v=chat-v4" defer></script>
+  <link rel="stylesheet" href="/assets/style.css?v=p1-runtime-v1">
+  <script src="/assets/app.js?v=p1-runtime-v1" defer></script>
 </head>
 <body>
   <header class="topbar">
     <a class="brand" href="/"><span class="brand-icon">C<span>·</span></span><span>CookClaw <small>厨房助手 · Agent 协作演示</small></span></a>
-    <div class="header-meta"><span class="pill"><i></i> 共享对话 Runtime</span><span class="pill subtle">三 Agent 实验 · 设备仅 Mock</span></div>
+    <div class="header-meta"><span class="pill"><i></i> 共享对话 Runtime</span><span class="pill subtle" id="rag-backend">检索后端检查中</span><span class="pill subtle">动态多 Agent · 设备仅 Mock</span></div>
   </header>
   <main class="workspace">
     <aside class="sidebar chat-sidebar" aria-label="CookClaw 聊天窗口">
@@ -28,10 +28,12 @@
         <div class="chat-quick-replies" aria-label="快捷消息">
           <button type="button" data-chat-message="鸡胸肉怎么做才不柴？">鸡胸肉不柴</button>
           <button type="button" data-chat-message="给三口之家安排三菜一汤，偏清淡。">安排家庭晚餐</button>
-          <button type="button" data-chat-message="请让三位专家协作规划：今晚两个人吃，有鸡肉和西兰花，两菜一汤，不要花生。">三 Agent 配餐</button>
+          <button type="button" data-chat-message="今晚四个人吃，请用鸡肉、西兰花、鸡蛋规划三菜一汤，不要花生，整体清淡。只有一个灶台和一个空气炸锅，希望45分钟内同时做好，缺少食材预算50元以内。">多 Agent 演示</button>
         </div>
       </div>
       <form class="chat-composer" id="chat-form">
+        <input id="chat-image" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+        <button class="chat-icon" id="chat-attach" type="button" aria-label="上传厨房图片" title="上传冰箱或食材图片">＋</button>
         <textarea id="chat-input" rows="1" maxlength="2000" placeholder="输入消息"></textarea>
         <button class="chat-send" id="chat-send" type="submit" aria-label="发送消息">➤</button>
       </form>
@@ -39,7 +41,7 @@
       <details class="brief-settings" id="brief-settings">
         <summary><span>⚙</span> 配餐任务参数 <small>可选，高级设置</small></summary>
         <div class="settings-body">
-          <p class="muted settings-intro">聊天使用与 QQ、WhatsApp 共享的对话服务。普通消息留在共享主链；明确请求“三位专家协作”后会桥接到 LangGraph 配餐图。下方仍保留独立实验面板。聊天会调用模型，本地会话状态在服务重启后清空。</p>
+          <p class="muted settings-intro">聊天使用与 QQ、WhatsApp 共享的对话服务。系统从菜单、饮食、库存和调度四个维度评估复杂度，按需组建 3～5 个 Agent；普通问题仍留在共享主链。</p>
           <section aria-labelledby="scenarios-title">
             <h2 id="scenarios-title">快速填充场景</h2>
             <button class="scenario selected" data-preset="family"><span>01</span><div>家庭晚餐<small>三菜一汤 · 食材复用</small></div><b>↗</b></button>
@@ -56,16 +58,23 @@
             </div>
             <label for="exclusions">必须排除的食材</label>
             <input id="exclusions" value="花生" placeholder="用逗号分隔，例如：花生,鸡蛋" maxlength="200">
+            <label for="available-ingredients">现有食材</label>
+            <input id="available-ingredients" value="鸡肉,西兰花,鸡蛋" placeholder="例如：鸡肉,西兰花,鸡蛋" maxlength="300">
+            <div class="form-row">
+              <label>预算/元<input id="budget-yuan" type="number" min="1" max="5000" value="50"></label>
+              <label>完成/分钟<input id="max-minutes" type="number" min="5" max="1440" value="45"></label>
+              <label>设备<input id="equipment" value="灶台,空气炸锅" maxlength="120"></label>
+            </div>
             <p class="field-note">硬约束以此列表和菜汤数量为准。自然语言补充用于模型分析。</p>
             <label for="mode">运行方式</label>
-            <select id="mode"><option value="rehearsal">流程演练 · 不调用模型</option><option value="live" id="live-option">三 Agent 实验 · 调用模型</option></select>
+            <select id="mode"><option value="rehearsal">流程演练 · 不调用模型</option><option value="live" id="live-option">多 Agent 实验 · 调用模型</option></select>
             <div id="mode-note" class="mode-note">这是独立的流程演练入口；左侧聊天已经接入共享对话 Runtime。</div>
             <button class="primary" id="start" type="submit">开始协作 <span>→</span></button>
             <button class="secondary" type="button" id="revise" disabled>按当前输入修改方案</button>
           </form>
         </div>
       </details>
-      <div class="sidebar-footer">本地演示 · 公开食谱数据<br>饮食分析不提供诊疗或过敏安全认证。</div>
+      <div class="sidebar-footer">本地演示 · 检索后端见顶部标识<br>饮食分析不提供诊疗或过敏安全认证。</div>
     </aside>
 
     <section class="main-panel" aria-labelledby="main-title">
@@ -77,14 +86,21 @@
         <details class="analysis-box"><summary>学习视图：本轮任务状态</summary><pre id="chat-state" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre></details>
       </section>
       <div class="flow" aria-label="工作流">
-        <span data-node="research">食谱研究</span><span class="connector">＋</span><span data-node="dietary">饮食分析</span><span class="connector">→</span><span data-node="menu">菜单规划</span><span class="connector">→</span><span data-node="validate">校验</span><span class="connector">→</span><span data-node="approval">确认</span>
+        <span data-node="research">食谱研究</span><span class="connector">＋</span><span data-node="dietary">饮食分析</span><span class="connector">→</span><span data-node="inventory" data-optional-agent="inventory">库存核对</span><span class="connector" data-optional-agent="inventory">→</span><span data-node="menu">菜单规划</span><span class="connector">→</span><span data-node="schedule" data-optional-agent="scheduler">烹饪排期</span><span class="connector" data-optional-agent="scheduler">→</span><span data-node="validate">确定性校验</span><span class="connector">→</span><span data-node="approval">确认</span>
       </div>
       <div class="run-meta" id="run-meta">并行研究 → 汇总规划 → 校验修订 → 人工确认</div>
       <div id="request-summary" class="request-summary" hidden></div>
+      <section id="team-panel" class="team-panel" hidden>
+        <div class="team-heading"><div><span class="eyebrow">DYNAMIC TEAM</span><h3 id="team-title">本轮动态组队</h3></div><span id="complexity-level" class="team-level"></span></div>
+        <div id="dimension-bars" class="dimension-bars"></div>
+        <ul id="routing-reasons" class="routing-reasons"></ul>
+      </section>
       <div class="agents-grid">
         <article class="agent-card" id="agent-research"><div class="agent-top"><span class="avatar blue">R</span><span class="agent-state">待命</span></div><h3>食谱研究员</h3><p>检索候选，补查事实</p><div class="agent-foot">MILVUS · RECIPE TOOLS</div></article>
         <article class="agent-card" id="agent-diet"><div class="agent-top"><span class="avatar green">D</span><span class="agent-state">待命</span></div><h3>饮食分析师</h3><p>分析要求，审阅依据</p><div class="agent-foot">RULES · NUTRITION</div></article>
+        <article class="agent-card optional-agent" id="agent-inventory"><div class="agent-top"><span class="avatar teal">I</span><span class="agent-state">按需加入</span></div><h3>食材库存师</h3><p>核对库存与采购缺口</p><div class="agent-foot">INVENTORY · BUDGET</div></article>
         <article class="agent-card" id="agent-menu"><div class="agent-top"><span class="avatar orange">M</span><span class="agent-state">待命</span></div><h3>菜单规划师</h3><p>组合菜单，处理取舍</p><div class="agent-foot">PLAN · REVISE</div></article>
+        <article class="agent-card optional-agent" id="agent-scheduler"><div class="agent-top"><span class="avatar purple">S</span><span class="agent-state">按需加入</span></div><h3>烹饪调度师</h3><p>协调时间、顺序与设备</p><div class="agent-foot">TIME · EQUIPMENT</div></article>
       </div>
       <div id="empty" class="empty"><div class="empty-mark">↗</div><h3>从一句话开始，完成今天这一餐</h3><p>从左侧聊天开始；这里会呈现共享回合服务返回的食谱、状态和可核验来源。</p><div class="empty-bottom"><span>对话</span><span>检索</span><span>状态</span></div></div>
       <section id="results" hidden>
@@ -92,6 +108,9 @@
         <p id="explanation" class="explanation"></p>
         <div id="recipes" class="recipe-grid"></div>
         <div class="analysis-box"><h3>饮食分析与待确认信息</h3><ul id="analysis"></ul><div id="rule-links" class="rule-links"></div></div>
+        <div class="analysis-box" id="inventory-box" hidden><h3>库存覆盖与采购缺口</h3><div id="inventory-summary"></div></div>
+        <section class="schedule-box" id="schedule-box" hidden><div class="result-heading"><h3>最终烹饪排期</h3><span id="schedule-total" class="muted"></span></div><div id="schedule-list" class="schedule-list"></div><ul id="schedule-unknowns" class="routing-reasons"></ul></section>
+        <section class="validation-box" id="validation-box" hidden><div class="result-heading"><h3>最终计划校验</h3><span id="validation-status" class="validation-status"></span></div><p id="detail-notice" class="nutrition-note"></p><ul id="validation-items"></ul></section>
         <div class="issues-box" id="issues-box" hidden><h3>尚未满足的要求</h3><ul id="issues"></ul></div>
         <div id="approval-box" class="approval-box" hidden><div><h3>方案已准备，等待你的确认</h3><p>请核对食材、份量和未知项。确认只会启动模拟设备。</p></div><div class="approval-actions"><button id="approve" class="primary">确认 Mock 执行</button><button id="reject" class="secondary">取消执行</button></div></div>
         <div id="execution" class="execution" hidden></div>
@@ -102,7 +121,9 @@
     <aside class="trace-panel" aria-labelledby="trace-title">
       <div class="trace-heading"><div><div class="eyebrow">LIVE TRACE</div><h2 id="trace-title">协作记录</h2></div><span id="event-count">0</span></div>
       <p class="trace-description">实际节点与工具事件。展开查看结构化输入输出，不展示内部思维链。</p>
-      <div class="trace-metrics"><div><strong id="calls">0</strong><span>模型调用</span></div><div><strong id="tokens">—</strong><span>返回 Token 统计</span></div><div><strong id="rounds">0</strong><span>规划轮次</span></div></div>
+      <div class="trace-metrics"><div><strong id="calls">0</strong><span>模型调用</span></div><div><strong id="tool-calls">0</strong><span>工具调用</span></div><div><strong id="tokens">—</strong><span>Token</span></div><div><strong id="rounds">0</strong><span>完成节点</span></div><div><strong id="duration">—</strong><span>运行耗时</span></div></div>
+      <section class="shared-state-panel"><div class="eyebrow">SHARED STATE</div><div id="shared-state" class="state-chips"><span>等待任务</span></div></section>
+      <section class="timeline-panel"><div class="eyebrow">PARALLEL TIMELINE</div><div id="execution-timeline" class="execution-timeline"><span class="muted">执行后显示各 Agent 时间线</span></div></section>
       <div id="trace" class="trace-list" aria-live="polite"><p class="muted trace-empty">任务开始后，执行过程会出现在这里。</p></div>
       <button id="replay" class="secondary" disabled>查看本次已保存记录</button>
     </aside>

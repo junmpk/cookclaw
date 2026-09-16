@@ -301,6 +301,7 @@ async def _route_conversation_turn(
     source_message_type: str | None = None,
     intent_override=None,
     runtime_memory: RuntimeMemorySnapshot | None = None,
+    defer_menu_narrative: bool = False,
 ):
     """Web/IM 共用同一个路由调用入口，统一记忆范围和澄清状态输入。"""
     memory_context_loader = None
@@ -378,6 +379,7 @@ async def _route_conversation_turn(
             if deep_agent_enabled or profile_memory_enabled(thread_id)
             else None
         ),
+        "defer_menu_narrative": defer_menu_narrative,
     }
     if intent_override is not None:
         route_kwargs["intent_override"] = intent_override
@@ -535,6 +537,8 @@ async def _clear_search_clarification_state(thread_id: str) -> None:
 async def handle_web_turn(
     question: str,
     thread_id: str,
+    *,
+    workflow_handoff=None,
 ):
     """统一 Turn facade 的 Web Markdown 输出；保持现有 async chunk 契约。"""
     rollout = deep_agent_rollout_decision(thread_id)
@@ -596,6 +600,7 @@ async def handle_web_turn(
             channel="web",
             source_message_type="text",
             trace_id=trace.trace_id,
+            workflow_handoff=workflow_handoff,
         )
         response_type = envelope.response_type
         content = WebResponseRenderer().render(envelope)
@@ -5263,6 +5268,7 @@ async def _run_turn_orchestrator(
     source_message_type: str | None,
     trace_id: str | None,
     on_search_start=None,
+    workflow_handoff=None,
 ) -> ResponseEnvelope:
     """Web、QQ、微信和 WhatsApp 共用的单轮核心 facade。"""
     normalized_channel = str(channel or "").strip().lower()
@@ -5394,6 +5400,32 @@ async def _run_turn_orchestrator(
         )
         return result.envelope if result is not None else None
 
+    async def workflow_handoff_handler(
+        context: TurnExecutionContext,
+    ) -> ResponseEnvelope | None:
+        """在领域 Recipe handler 前，把完整复杂任务交给受限工作流一次。
+
+        路由结论在本轮 runtime 内只计算一次；若外部工作流拒绝接管，后续
+        Recipe handler 会复用同一结论，不会重复分类或检索。
+        """
+        if workflow_handoff is None:
+            return None
+        runtime = await context.runtime()
+        outcome = await _load_qq_route_outcome(
+            runtime,
+            defer_menu_narrative=True,
+        )
+        envelope = await workflow_handoff(runtime, outcome)
+        if (
+            envelope is None
+            and outcome.kind == "menu_plan"
+            and (outcome.search_result or {}).get("_recommendation_deferred")
+        ):
+            # 交接失败时让普通 Recipe handler 重新生成它需要的 grounded
+            # narrative，不能把缺少公开文案的半成品交给通道渲染。
+            runtime.route_outcome = None
+        return envelope
+
     async def device_handler(
         context: TurnExecutionContext,
     ) -> ResponseEnvelope | None:
@@ -5439,6 +5471,7 @@ async def _run_turn_orchestrator(
             "device_pending": device_pending_handler,
             "planner": planner_handler,
             "pending_state": pending_state_handler,
+            "workflow_handoff": workflow_handoff_handler,
             "recipe_handler": recipe_handler,
             "device_handler": device_handler,
             "conversation_fallback": smart_conversation_handler,
@@ -5480,6 +5513,31 @@ async def qqbot_chat(
 
         if _im_graph_bridge is None:
             envelope = await shared_runtime()
+        elif all(
+            hasattr(_im_graph_bridge, name)
+            for name in ("handle_existing", "workflow_handoff")
+        ):
+            envelope = await _im_graph_bridge.handle_existing(
+                question,
+                thread_id,
+            )
+            if envelope is None:
+                async def workflow_handoff(_runtime, outcome):
+                    return await _im_graph_bridge.workflow_handoff(
+                        question,
+                        thread_id,
+                        outcome,
+                    )
+
+                envelope = await _run_turn_orchestrator(
+                    question,
+                    thread_id=thread_id,
+                    channel=channel,
+                    on_search_start=on_search_start,
+                    source_message_type=source_message_type,
+                    trace_id=_trace.trace_id,
+                    workflow_handoff=workflow_handoff,
+                )
         else:
             from app.conversation.service import get_conversation_service
 
@@ -5999,7 +6057,11 @@ async def _handle_qq_pending_state(
     return None
 
 
-async def _load_qq_route_outcome(runtime: _QQTurnRuntime) -> FastPathOutcome:
+async def _load_qq_route_outcome(
+    runtime: _QQTurnRuntime,
+    *,
+    defer_menu_narrative: bool = False,
+) -> FastPathOutcome:
     """一轮只执行一次意图路由；后续领域 handler 共享同一个结论。"""
     if runtime.route_outcome is None:
         runtime.route_outcome = await _route_conversation_turn(
@@ -6009,6 +6071,7 @@ async def _load_qq_route_outcome(runtime: _QQTurnRuntime) -> FastPathOutcome:
             pending_clarification=runtime.pending_clarification,
             source_message_type=runtime.source_message_type,
             runtime_memory=runtime.memory_snapshot,
+            defer_menu_narrative=defer_menu_narrative,
         )
     return runtime.route_outcome
 

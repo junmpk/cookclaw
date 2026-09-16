@@ -136,6 +136,9 @@ class TurnApplicationService:
                 device_pending_handler=adapt(handlers.get("device_pending")),
                 planner_handler=adapt(handlers.get("planner")),
                 pending_state_handler=adapt(handlers.get("pending_state")),
+                workflow_handoff_handler=adapt(
+                    handlers.get("workflow_handoff")
+                ),
                 recipe_handler=adapt(handlers.get("recipe_handler")),
                 device_handler=adapt(handlers.get("device_handler")),
                 conversation_fallback_handler=adapt(

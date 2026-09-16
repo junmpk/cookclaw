@@ -55,6 +55,16 @@ def test_recent_conversation_lang_ignores_synthetic_image_placeholder():
     assert main._recent_conversation_lang(turns) == "en"
 
 
+def test_web_data_url_is_converted_without_logging_or_writing_raw_image():
+    result = main._image_input_from_media("data:image/png;base64,a2l0Y2hlbg==")
+
+    assert result == {
+        "image_base64": "a2l0Y2hlbg==",
+        "image_mime": "image/png",
+    }
+    assert main._image_input_from_media("data:image/gif;base64,a2l0Y2hlbg==") is None
+
+
 def test_qq_four_item_menu_splits_before_soup_and_keeps_indices():
     recipes = [
         {
@@ -351,6 +361,58 @@ async def test_genuine_non_food_keeps_humorous_fallback(monkeypatch):
     )
 
     assert "staying out of the pan" in text
+
+
+@pytest.mark.asyncio
+async def test_web_image_requires_ingredient_confirmation_before_search(monkeypatch):
+    from app.agent import fast_path
+    from app.conversation.service import get_conversation_service
+    from app.conversation.task_state_workspace import clear_thread
+
+    async def fake_recognize(images, lang="zh"):
+        assert images == [{"image_url": "https://example.com/fridge.jpg"}]
+        assert lang == "zh"
+        return {
+            "is_food": True,
+            "scene_type": "ingredients",
+            "dish_name": "",
+            "dish_names": [],
+            "ingredients": [
+                {"name": "鸡蛋", "confidence": 0.92, "state": "raw"},
+                {"name": "番茄", "confidence": 0.88, "state": "raw"},
+            ],
+            "search_query": "鸡蛋 番茄 家常菜",
+            "confidence": 0.91,
+        }
+
+    async def search_must_not_run(*_args, **_kwargs):
+        raise AssertionError("Web image search must wait for ingredient confirmation")
+
+    async def fake_lang(_chat_id, _user_text=""):
+        return "zh"
+
+    thread_id = "web:0123456789abcdef0123456789abcdef"
+    clear_thread(thread_id)
+    monkeypatch.setattr(image_orchestrator, "recognize_ingredients_by_images", fake_recognize)
+    monkeypatch.setattr(fast_path, "_run_search_subprocess", search_must_not_run)
+    monkeypatch.setattr(main, "_image_response_lang", fake_lang)
+
+    try:
+        result = await main._handle_image_media(
+            ["https://example.com/fridge.jpg"],
+            chat_id=thread_id,
+            user_text="看看冰箱里能做什么",
+        )
+
+        assert result["kind"] == "image_confirmation"
+        assert result["response"]["type"] == "image_ingredients_confirmation"
+        assert result["response"]["data"]["ingredients"] == ["鸡蛋", "番茄"]
+        pending = (await get_conversation_service().load_task_state(thread_id)).pending_action
+        assert pending["kind"] == "confirm_image_ingredients"
+        assert pending["payload"]["ingredients"] == ["鸡蛋", "番茄"]
+    finally:
+        await get_conversation_service().reset_session(thread_id)
+        clear_thread(thread_id)
 
 
 @pytest.mark.asyncio

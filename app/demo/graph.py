@@ -4,9 +4,10 @@ import time
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
-from .models import Brief, DemoState, Recipe
+from .details import hydrate_schedule_details
+from .models import Brief, ComplexityProfile, DemoState, Recipe
 from .retrieval import vector
-from .validation import validate_menu
+from .validation import validate_menu, validate_plan
 
 
 def _apply_slot_replacement(menu: dict, candidates: list[Recipe], replacement: dict | None) -> dict:
@@ -63,7 +64,21 @@ def _apply_slot_replacement(menu: dict, candidates: list[Recipe], replacement: d
     }
 
 
-def build_graph(agents, saver, storage, run_id: str, emit):
+def build_graph(
+    agents,
+    saver,
+    storage,
+    run_id: str,
+    emit,
+    complexity_profile: ComplexityProfile | None = None,
+):
+    selected_agents = set(
+        (complexity_profile or ComplexityProfile(
+            level="coordinated",
+            selected_agents=["research", "dietary", "menu"],
+        )).selected_agents
+    )
+
     def recipes(state):
         return [Recipe.model_validate(item) for item in state.get("candidates", [])]
 
@@ -79,6 +94,10 @@ def build_graph(agents, saver, storage, run_id: str, emit):
     async def research(state):
         attempt = state.get("research_count", 0) + 1
         brief = Brief(**state["brief"])
+        preloaded = [
+            Recipe.model_validate(item)
+            for item in state.get("preloaded_candidates", [])
+        ]
         revision_request = str(
             (state.get("replacement") or {}).get("request") or ""
         ).strip()
@@ -89,16 +108,50 @@ def build_graph(agents, saver, storage, run_id: str, emit):
             brief = brief.model_copy(
                 update={"request": combined_request}
             )
-        result = await agents.research(brief, state.get("issues", []), attempt)
+        result = await agents.research(
+            brief,
+            state.get("issues", []),
+            attempt,
+            preloaded_candidates=(preloaded if attempt == 1 else None),
+        )
         return {"candidates": result, "research_count": attempt}
 
     async def dietary(state):
         return {"dietary": await agents.diet(Brief(**state["brief"]))}
 
+    async def inventory(state):
+        result = await agents.inventory(Brief(**state["brief"]), recipes(state))
+        return {"inventory": result}
+
     async def menu(state):
-        result = await agents.plan(Brief(**state["brief"]), recipes(state), state["dietary"], state.get("issues", []))
+        result = await agents.plan(
+            Brief(**state["brief"]),
+            recipes(state),
+            state["dietary"],
+            state.get("issues", []),
+            state.get("inventory"),
+        )
         result = _apply_slot_replacement(result, recipes(state), state.get("replacement"))
         return {"menu": result, "revision_count": state.get("revision_count", 0) + 1}
+
+    async def schedule(state):
+        result = await agents.schedule(
+            Brief(**state["brief"]),
+            recipes(state),
+            state["menu"],
+        )
+        return {"schedule": result}
+
+    async def hydrate_details(state):
+        hydrated, summary = hydrate_schedule_details(
+            Brief(**state["brief"]),
+            recipes(state),
+            [str(item) for item in state["menu"]["recipe_ids"]],
+        )
+        return {
+            "candidates": [recipe.model_dump() for recipe in hydrated],
+            "detail_hydration": summary,
+        }
 
     async def validate(state):
         issues = validate_menu(Brief(**state["brief"]), recipes(state), state["menu"]["recipe_ids"])
@@ -125,13 +178,38 @@ def build_graph(agents, saver, storage, run_id: str, emit):
         return "menu"
 
     async def review(state):
-        result = await agents.review(Brief(**state["brief"]), recipes(state), state["menu"])
+        result = await agents.review(
+            Brief(**state["brief"]),
+            recipes(state),
+            state["menu"],
+            state.get("inventory"),
+            state.get("schedule"),
+        )
         return {"review": result, "issues": result["findings"] if result["needs_revision"] else []}
 
     def review_route(state):
         if not state["review"]["needs_revision"]:
-            return "approval"
+            return "final_validate"
         return "menu" if state["revision_count"] < 3 else "blocked"
+
+    async def final_validate(state):
+        report = validate_plan(
+            Brief(**state["brief"]),
+            recipes(state),
+            state["menu"],
+            dietary=state.get("dietary"),
+            inventory=state.get("inventory"),
+            schedule=state.get("schedule"),
+            review=state.get("review"),
+        )
+        return {
+            "plan_validation": report.model_dump(),
+            "issues": list(report.blocking_issues),
+        }
+
+    def final_validation_route(state):
+        report = state.get("plan_validation") or {}
+        return "blocked" if report.get("blocking_issues") else "approval"
 
     async def blocked(state):
         return {"status": "blocked", "approved": False}
@@ -147,8 +225,16 @@ def build_graph(agents, saver, storage, run_id: str, emit):
 
     async def execute(state):
         # Revalidate on resume; a checkpoint is never an authorization bypass.
-        issues = validate_menu(Brief(**state["brief"]), recipes(state), state["menu"]["recipe_ids"])
-        if issues or not state.get("approved"):
+        report = validate_plan(
+            Brief(**state["brief"]),
+            recipes(state),
+            state["menu"],
+            dietary=state.get("dietary"),
+            inventory=state.get("inventory"),
+            schedule=state.get("schedule"),
+            review=state.get("review"),
+        )
+        if report.blocking_issues or not state.get("approved"):
             raise ValueError("方案未通过执行前校验")
         result = storage.execute_mock(f"{run_id}:v{state['version']}", state["menu"]["recipe_ids"])
         return {"execution": result, "status": "completed"}
@@ -160,16 +246,45 @@ def build_graph(agents, saver, storage, run_id: str, emit):
     builder.add_node("validate", observed("system", "validate", validate))
     builder.add_node("refetch", observed("research", "refetch", research))
     builder.add_node("review", observed("diet", "review", review))
+    builder.add_node(
+        "final_validate",
+        observed("system", "final_validate", final_validate),
+    )
     builder.add_node("approval", approval)
     builder.add_node("execute", observed("system", "execute", execute))
     builder.add_node("blocked", observed("system", "blocked", blocked))
     builder.add_edge(START, "research")
     builder.add_edge(START, "dietary")
-    builder.add_edge(["research", "dietary"], "menu")
-    builder.add_edge("menu", "validate")
+    if "inventory" in selected_agents:
+        builder.add_node("inventory", observed("inventory", "inventory", inventory))
+        builder.add_node(
+            "inventory_refresh",
+            observed("inventory", "inventory_refresh", inventory),
+        )
+        builder.add_edge("research", "inventory")
+        builder.add_edge(["inventory", "dietary"], "menu")
+    else:
+        builder.add_edge(["research", "dietary"], "menu")
+    if "scheduler" in selected_agents:
+        builder.add_node(
+            "hydrate_details",
+            observed("system", "hydrate_details", hydrate_details),
+        )
+        builder.add_node("schedule", observed("scheduler", "schedule", schedule))
+        builder.add_edge("menu", "hydrate_details")
+        builder.add_edge("hydrate_details", "schedule")
+        builder.add_edge("schedule", "validate")
+    else:
+        builder.add_edge("menu", "validate")
     builder.add_conditional_edges("validate", validation_route)
-    builder.add_edge("refetch", "menu")
+    builder.add_edge(
+        "refetch",
+        "inventory_refresh" if "inventory" in selected_agents else "menu",
+    )
+    if "inventory" in selected_agents:
+        builder.add_edge("inventory_refresh", "menu")
     builder.add_conditional_edges("review", review_route)
+    builder.add_conditional_edges("final_validate", final_validation_route)
     builder.add_conditional_edges("approval", lambda state: "execute" if state["approved"] else END)
     builder.add_edge("execute", END)
     builder.add_edge("blocked", END)

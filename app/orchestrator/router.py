@@ -733,6 +733,7 @@ async def route_fast_path(
     recommendation_deep_agent_enabled: bool = False,
     recommendation_agent_context: Optional[dict] = None,
     intent_override: IntentResult | None = None,
+    defer_menu_narrative: bool = False,
 ) -> FastPathOutcome:
     """意图分类 → 语言判定 → 确定性检索 / 问候 的共享前段。
 
@@ -1418,18 +1419,25 @@ async def route_fast_path(
                 for item in (search_result.get("_menu_plan") or {}).get("queries") or []
                 if item.get("query")
             )
-            narrative = await generate_recommendation_narrative(
-                original_question=question,
-                search_query=query_summary or request.retrieval_query(lang=lang),
-                search_result=search_result,
-                lang=lang,
-                search_request=request,
-                recent_turns=recent_turns,
-                deep_agent_enabled=recommendation_deep_agent_enabled,
-                agent_context=recommendation_agent_context,
-            )
-            search_result["_recommendation"] = narrative.to_dict()
-            search_result["_recommendation_source"] = "grounded_v2"
+            if defer_menu_narrative:
+                # 复杂菜单若将由受限 Graph 接管，普通 Recipe renderer 的文案
+                # 不会展示，因此延后生成，避免一次不可见的额外模型调用。
+                search_result["_recommendation_deferred"] = True
+            else:
+                narrative = await generate_recommendation_narrative(
+                    original_question=question,
+                    search_query=(
+                        query_summary or request.retrieval_query(lang=lang)
+                    ),
+                    search_result=search_result,
+                    lang=lang,
+                    search_request=request,
+                    recent_turns=recent_turns,
+                    deep_agent_enabled=recommendation_deep_agent_enabled,
+                    agent_context=recommendation_agent_context,
+                )
+                search_result["_recommendation"] = narrative.to_dict()
+                search_result["_recommendation_source"] = "grounded_v2"
             search_result["_interaction_mode"] = "recommend"
             _attach_decision_id(search_result)
             return FastPathOutcome(

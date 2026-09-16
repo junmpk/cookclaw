@@ -6,7 +6,8 @@ QQ、微信和 WhatsApp 的文本消息本来就共同进入 `qqbot_chat()` 与�
 Orchestrator。本阶段在这个共享入口增加可选的 `IMGraphBridge`：
 
 1. 普通闲聊、厨房技巧、单菜搜索继续走原 Turn Runtime；
-2. 只有明确包含“三位专家协作”“协作配餐”等触发词的菜单请求才进入 Graph；
+2. 共享 Runtime 形成结构化菜单需求后，系统按菜单槽位、人数和硬约束自动判断是否
+   进入 Graph；“三位专家协作”等触发词只保留为开发调试覆盖；
 3. 原 Runtime 先解析并保存人数、菜数、汤数和排除项，Graph 不从自由文本重新猜约束；
 4. Graph 完成后返回统一 `menu_plan`，三个通道沿用现有菜谱卡片 Renderer；
 5. 同一通道 thread 可以回复“确认”“取消”或局部调整菜单。
@@ -30,7 +31,8 @@ Orchestrator。本阶段在这个共享入口增加可选的 `IMGraphBridge`：
 
 ## 本地启用
 
-先准备公开演示食谱库：
+bridge 与 Web 使用同一个 `DEMO_RECIPE_BACKEND` 选择器。配置了真实 Milvus 时可使用
+`hybrid`；没有授权数据的公开克隆可准备公开演练库：
 
 ```bash
 uv run python -m app.demo.seed
@@ -41,6 +43,7 @@ uv run python -m app.demo.seed
 ```dotenv
 MULTI_AGENT_BRIDGE_ENABLED=true
 MULTI_AGENT_BRIDGE_MODE=live
+DEMO_RECIPE_BACKEND=auto
 # 可选；默认使用仓库根目录的 .demo
 # MULTI_AGENT_DATA_DIR=/absolute/path/to/cookclaw/.demo
 ```
@@ -59,7 +62,8 @@ uv run python -m app.main
 - 开关默认关闭，未启用时不会改变任何通道行为；
 - Graph 只产生菜单方案，执行节点仍然只有 Mock provider；
 - 确认前后都会校验版本和菜单约束，Agent 没有设备授权；
-- Graph checkpoint、thread 与 run 的绑定保存在本地 SQLite；
+- Web/IM 共享同一套 RecipeStore 选择规则；Graph checkpoint、thread 与 run 的绑定
+  保存在本地 SQLite；
 - 当前只完成本地自动化验证，没有连接真实 QQ、微信或 WhatsApp 账号验收；
 - 当前同步等待 Graph 结果，适合面试演示；生产环境应改为持久任务队列和主动回推。
 

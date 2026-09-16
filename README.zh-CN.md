@@ -70,22 +70,34 @@ curl http://127.0.0.1:8000/api/v1/health
 ### 公开 Web 演示
 
 公开副本还包含一个 Web 演示端：左侧聊天复用 QQ/WhatsApp 的共享对话入口。
-普通消息留在共享对话 Runtime；用户明确说“请让三位专家协作配餐”后，
-保存的任务状态会桥接到 LangGraph 三 Agent 配餐流程。两条链路都只使用本地
-演示数据库和 Mock 设备边界：
+普通消息先进入共享对话 Runtime；系统从菜单、饮食、库存和调度四个维度判断任务复杂度，
+复杂配餐会自动桥接到 LangGraph 动态多 Agent 流程，并按需启用 3～5 个角色。
+普通聊天、图片识别确认和多 Agent 共用同一个 `thread_id` 与真实混合 RAG；设备执行始终停留在 Mock 边界：
 
 ```bash
 uv run python -m app.demo.seed
+uv run python scripts/verify_interview_demo.py  # 离线演示契约自检
 uv run uvicorn app.demo.server:app --host 127.0.0.1 --port 8010
 ```
 
 打开 <http://127.0.0.1:8010>。页面最左侧是 WhatsApp 风格的厨房聊天窗口：
-闲聊、厨房技巧、补充约束、候选替换和菜谱详情都在同一条共享会话中完成。
-明确请求三 Agent 后可以在右侧观察研究、分析、规划和确认节点，并在同一聊天框
+闲聊、厨房技巧、补充约束、候选替换和菜谱详情都在同一条共享会话中完成；也可
+上传 JPEG、PNG 或 WebP 冰箱照片，先核对视觉模型识别的食材，再补充食材或开始检索。
+复杂配餐自动路由后可以观察动态组队原因、并行时间线、共享状态、库存覆盖与烹饪排期，并在同一聊天框
 回复“确认”或“取消”，也可以在确认前说“第二道换掉”触发局部修订；中间的
 食谱卡片会展示来源图片，远程图片暂时不可用时仍会显示可识别的占位区域，
-不会阻塞流程。真实模型调用从本地 `.env` 读取 `DASHSCOPE_API_KEY`；流程演练
+不会阻塞流程。调度 Agent 只在限时、并行或有限设备等条件下加入；公开数据缺少生产
+步骤时，页面会把虚拟步骤明确标为“演示模板”，不把它当作真实做法或设备指令。
+右侧指标来自实际事件账本，展示模型/工具调用、节点数、耗时和 checkpoint 恢复次数；
+`thread_id → run_id → checkpoint` 的身份也会随 Run 持久化。
+真实模型调用从本地 `.env` 读取 `DASHSCOPE_API_KEY`；流程演练
 模式不调用模型。
+
+`DEMO_RECIPE_BACKEND=auto` 会在 `RECIPE_MILVUS_URI` 可用时选择主工程的
+稠密向量 + BM25 + RRF + 重排链路；公开克隆没有授权数据时，运行
+`python -m app.demo.seed` 后会明确降级为 `public_rehearsal`。页面顶栏会显示当前
+后端，规则演练库不会伪装成真实混合 RAG。六项第一轮改造的链路、状态关系和
+面试演示脚本见 [Web 完整闭环](docs/web-agent-workflow.md)。
 
 如需在面试演示中让 QQ、微信和 WhatsApp 也进入同一张 LangGraph，可按
 [第三阶段 IM Graph bridge](docs/im-graph-phase3.md) 打开默认关闭的灰度开关。

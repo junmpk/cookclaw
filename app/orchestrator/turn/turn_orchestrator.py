@@ -2,7 +2,7 @@
 
 可选 Planner 及其评估入口归入 planning 子包。统一 Turn facade 按固定顺序先接
 图片、会话重置、Memory 命令、精确命令，再接设备待确认、其余 pending state、可选 Planner、Recipe handler、
-Device handler、Conversation fallback 和最终 fallback。facade 出口附加真实工具调用与状态
+    可选工作流交接、Device handler、Conversation fallback 和最终 fallback。facade 出口附加真实工具调用与状态
 差异账本；画像/偏好位于首位 handler。不同消息类型可以不注册无关 handler，但业务轮次只能由第一个返回
 ResponseEnvelope 的 handler 完成。
 """
@@ -34,6 +34,7 @@ _HANDLER_ORDER = (
     "device_pending",
     "pending_state",
     "planner",
+    "workflow_handoff",
     "recipe_handler",
     "device_handler",
     "conversation_fallback",
@@ -65,6 +66,7 @@ class TurnOrchestrator:
         device_pending_handler: TurnHandler | None = None,
         planner_handler: TurnHandler | None = None,
         pending_state_handler: TurnHandler | None = None,
+        workflow_handoff_handler: TurnHandler | None = None,
         recipe_handler: TurnHandler | None = None,
         device_handler: TurnHandler | None = None,
         conversation_fallback_handler: TurnHandler | None = None,
@@ -78,6 +80,7 @@ class TurnOrchestrator:
             "device_pending": device_pending_handler,
             "planner": planner_handler,
             "pending_state": pending_state_handler,
+            "workflow_handoff": workflow_handoff_handler,
             "recipe_handler": recipe_handler,
             "device_handler": device_handler,
             "conversation_fallback": conversation_fallback_handler,

@@ -1120,10 +1120,38 @@ def _image_input_from_media(media: str) -> dict | None:
     """通道媒体路径/URL -> vision 输入。公网 URL 直接传；本地缓存文件转 base64。"""
     import base64
     import mimetypes
+    import re
 
     if isinstance(media, str) and media.lower().startswith(("http://", "https://")):
         logger.info("[图片识别] 按公网 URL 处理：origin=%s", _log_url_origin(media))
         return {"image_url": media}
+    if isinstance(media, str) and media.lower().startswith("data:image/"):
+        matched = re.fullmatch(
+            r"data:(image/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=\r\n]+)",
+            media,
+            flags=re.IGNORECASE,
+        )
+        if not matched:
+            logger.warning("[图片识别] Web data URL 格式不合法")
+            return None
+        encoded = re.sub(r"\s+", "", matched.group(2))
+        try:
+            decoded = base64.b64decode(encoded, validate=True)
+        except (ValueError, TypeError):
+            logger.warning("[图片识别] Web 图片 base64 无法解码")
+            return None
+        if not decoded or len(decoded) > 8 * 1024 * 1024:
+            logger.warning("[图片识别] Web 图片大小不合法：bytes=%s", len(decoded))
+            return None
+        logger.info(
+            "[图片识别] 按 Web data URL 处理：mime=%s bytes=%s",
+            matched.group(1).lower(),
+            len(decoded),
+        )
+        return {
+            "image_base64": encoded,
+            "image_mime": matched.group(1).lower(),
+        }
     if isinstance(media, str) and os.path.exists(media):
         mime = mimetypes.guess_type(media)[0] or "image/jpeg"
         with open(media, "rb") as f:
@@ -2150,7 +2178,7 @@ async def lifespan(app_instance: FastAPI):
     except Exception as e:
         logger.warning("食谱检索预热异常（忽略，运行时回退子进程）：error_type=%s", type(e).__name__)
 
-    # ─── 可选的三 Agent Graph bridge ───────────────────────────
+    # ─── 可选的动态多 Agent Graph bridge ───────────────────────
     # 只在显式灰度开关打开时注入 QQ/微信/WhatsApp 的共享入口。
     if os.getenv("MULTI_AGENT_BRIDGE_ENABLED", "false").lower() == "true":
         from pathlib import Path
@@ -2162,19 +2190,16 @@ async def lifespan(app_instance: FastAPI):
         data_dir = Path(
             os.getenv("MULTI_AGENT_DATA_DIR", str(default_dir))
         ).expanduser()
-        if not (data_dir / "recipes.db").exists():
-            raise RuntimeError(
-                "MULTI_AGENT_BRIDGE_ENABLED=true，但公开演示食谱库不存在；"
-                "请先运行 python -m app.demo.seed"
-            )
         _im_graph_bridge = await IMGraphBridge.create(data_dir)
         _agent_module.bind_im_graph_bridge(_im_graph_bridge)
         logger.info(
-            "三 Agent Graph bridge 已启用: mode=%s channels=qq,weixin,whatsapp",
+            "动态多 Agent Graph bridge 已启用: mode=%s backend=%s "
+            "channels=qq,weixin,whatsapp",
             os.getenv("MULTI_AGENT_BRIDGE_MODE", "live"),
+            _im_graph_bridge.recipe_backend,
         )
     else:
-        logger.info("三 Agent Graph bridge 未启用")
+        logger.info("动态多 Agent Graph bridge 未启用")
 
     # ─── 启动 QQ Bot ────────────────────────────────────────────
     # QQ Bot 是 Python 进程内直接连 QQ 网关，不需要额外 Node 服务。

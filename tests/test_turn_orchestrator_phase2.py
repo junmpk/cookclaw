@@ -108,6 +108,31 @@ def test_pending_state_preempts_planner_when_it_handles_the_turn():
     assert envelope.message == "继续当前结构化任务"
 
 
+def test_workflow_handoff_preempts_recipe_handler():
+    calls: list[str] = []
+
+    async def handoff(_request):
+        calls.append("workflow_handoff")
+        return ResponseEnvelope(
+            response_type="workflow",
+            message="复杂菜单已交接",
+        )
+
+    async def forbidden_recipe(_request):
+        raise AssertionError("Graph 接管后不得再生成普通菜单回复")
+
+    envelope = asyncio.run(
+        TurnOrchestrator(
+            workflow_handoff_handler=handoff,
+            recipe_handler=forbidden_recipe,
+        ).handle(_request())
+    )
+
+    assert calls == ["workflow_handoff"]
+    assert envelope.handled_by == "workflow_handoff"
+    assert envelope.message == "复杂菜单已交接"
+
+
 def test_turn_request_safe_ref_and_repr_do_not_expose_private_text():
     request = _request()
 

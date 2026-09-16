@@ -100,11 +100,20 @@ class ImageHandlerResult:
         """保持 QQ/微信/WhatsApp 当前发送契约，便于逐通道灰度。"""
         payload = self.envelope.public_payload()
         if (
-            self.envelope.response_type in {"recipe_search", "menu_plan"}
+            self.envelope.response_type in {
+                "recipe_search",
+                "menu_plan",
+                "image_ingredients_confirmation",
+            }
             and isinstance(payload, dict)
         ):
             result: dict[str, Any] = {
-                "kind": "recipe_search",
+                "kind": (
+                    "image_confirmation"
+                    if self.envelope.response_type
+                    == "image_ingredients_confirmation"
+                    else "recipe_search"
+                ),
                 "response": payload,
             }
             if self.image_context is not None:
@@ -361,11 +370,25 @@ async def handle_image_turn(
         user_hint=request.utterance,
     )
     scene = str(recognized.get("scene_type") or "").strip().lower()
-    if inventory_payload.get("ingredients") and scene in {"ingredients", "mixed"}:
+    inventory_ingredients = _clean_values(
+        inventory_payload.get("ingredients"),
+        limit=12,
+    )
+    if inventory_ingredients and scene in {"ingredients", "mixed"}:
+        pending_payload = dict(inventory_payload)
+        if request.channel == "web":
+            # The Web follow-up handler consumes a confirmed list of names.
+            # Keep confidence-rich visual objects in the derived context, but
+            # never stringify those dictionaries into the later RAG query.
+            pending_payload["ingredients"] = list(inventory_ingredients)
         set_pending_action(
             thread_id,
-            "image_inventory",
-            payload=inventory_payload,
+            (
+                "confirm_image_ingredients"
+                if request.channel == "web"
+                else "image_inventory"
+            ),
+            payload=pending_payload,
             lang=lang,
         )
     elif existing_action and existing_action.get("kind") in {
@@ -385,6 +408,42 @@ async def handle_image_turn(
         image_count=image_count,
     )
     request = request.model_copy(update={"derived_context": derived_context})
+    if (
+        request.channel == "web"
+        and inventory_ingredients
+        and scene in {"ingredients", "mixed"}
+    ):
+        from app.orchestrator.turn.image_followup import (
+            image_ingredient_confirmation_text,
+        )
+
+        image_context = image_orchestrator.build_image_agent_context(
+            recognized,
+            image_count=image_count,
+            user_hint=effective_user_hint,
+        )
+        return finish(
+            ResponseEnvelope(
+                response_type="image_ingredients_confirmation",
+                intent="image_ingredients",
+                lang=lang,
+                message=image_ingredient_confirmation_text(
+                    inventory_ingredients,
+                    lang,
+                ),
+                data={
+                    "ingredients": inventory_ingredients,
+                    "scene_type": scene,
+                    "image_count": image_count,
+                    "requires_confirmation": True,
+                },
+                handled_by="image_handler",
+                trace_id=trace_id,
+            ),
+            result_code="IMAGE_INGREDIENTS_CONFIRMATION_REQUIRED",
+            success=True,
+            result_count=len(inventory_ingredients),
+        )
     search_request = image_orchestrator.build_image_search_request(
         recognized,
         lang=lang,

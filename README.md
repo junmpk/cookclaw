@@ -81,24 +81,42 @@ Milvus server. No recipe workbook or production database is distributed here.
 
 The public checkout also contains a Web demo. Its left chat uses the same
 conversation entry point as the QQ/WhatsApp adapters. Ordinary turns stay in the
-shared runtime; an explicit request such as “ask the three experts to plan this
-meal” bridges the saved task state into the LangGraph three-agent workflow. Both
-paths use only the local demo database and a Mock device boundary:
+shared runtime; a deterministic multidimensional router examines menu, dietary,
+inventory, and scheduling complexity, then selects three to five specialized agents
+for a complex LangGraph workflow. Chat,
+image confirmation, and all selected agents share one canonical `thread_id` and the
+configured grounded retrieval backend. Device execution stays behind a Mock boundary:
 
 ```bash
 uv run python -m app.demo.seed
+uv run python scripts/verify_interview_demo.py  # offline workflow contract check
 uv run uvicorn app.demo.server:app --host 127.0.0.1 --port 8010
 ```
 
 Open <http://127.0.0.1:8010>. The left rail behaves like a WhatsApp-style kitchen
 chat: casual cooking questions, follow-up constraints, candidate replacement and
-recipe details stay in one shared conversation. Add an explicit “three-agent
-collaboration” request to see the graph nodes and reply “confirm” or “cancel” in
+recipe details stay in one shared conversation. A JPEG, PNG, or WebP fridge photo
+first produces an ingredient list for user confirmation; only the confirmed list
+enters retrieval. A multi-item constrained meal request automatically reveals the
+selected agents, routing reasons, shared state, parallel timeline, inventory coverage,
+and cooking schedule; reply “confirm” or “cancel” in
 the same thread; before confirmation, a message such as “replace option 2” creates
 a new checked graph version while preserving the other slots. The center cards display source recipe images;
 if a remote image is unavailable, the card keeps a visible fallback instead of
-blocking the workflow. Optional live model calls read `DASHSCOPE_API_KEY` from
+blocking the workflow. The scheduler joins only for timing, parallelism, or constrained
+equipment conditions. If public data omits production steps, the UI labels generated
+schedule placeholders as demo templates; they are not recipe facts or device commands.
+The trace panel aggregates actual events into model/tool calls, completed nodes,
+wall time, and checkpoint recovery attempts. Each run persists its explicit
+`thread_id → run_id → checkpoint` identity.
+Optional live model calls read `DASHSCOPE_API_KEY` from
 the local `.env`; rehearsal mode does not call a model.
+
+With `DEMO_RECIPE_BACKEND=auto`, a configured `RECIPE_MILVUS_URI` selects the main
+dense + BM25 + RRF + reranking pipeline. A fresh public clone can run
+`python -m app.demo.seed` and transparently falls back to the labelled
+`public_rehearsal` store; the UI exposes which backend is active. See the
+[unified Web workflow](docs/web-agent-workflow.md) for the state mapping and demo script.
 
 For interview demos, an optional bridge can route explicit multi-agent menu
 requests from QQ, Weixin, and WhatsApp into the same LangGraph. It is disabled
