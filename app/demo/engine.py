@@ -12,7 +12,7 @@ import uuid
 from fastapi import HTTPException
 from langgraph.types import Command
 
-from .agents import Agents
+from .agents import Agents, StructuredResponseError
 from .chat_intent import graph_routing_decision
 from .graph import build_graph
 from .models import Brief, ComplexityProfile, Recipe
@@ -294,7 +294,7 @@ class Engine:
                 "error",
                 {
                     "type": type(exc).__name__,
-                    "message": "本次流程未完成。请检查食谱库、模型配置与网络；可从检查点重试。",
+                    "message": str(exc) if isinstance(exc, StructuredResponseError) else "本次流程未完成。请检查食谱库、模型配置与网络；可从检查点重试。",
                 },
             )
 

@@ -45,6 +45,15 @@ INVENTORY_ALIASES = {
 }
 
 
+class StructuredResponseError(ValueError):
+    """Safe public error; never includes provider content or user payload."""
+
+    def __init__(self, role):
+        label = {"menu": "菜单", "research": "食谱研究", "diet": "饮食分析",
+                 "inventory": "库存分析", "scheduler": "烹饪排期"}.get(role, "Agent")
+        super().__init__(f"{label}输出格式不符合要求；一次格式纠正重试后仍未通过校验。")
+
+
 class Agents:
     def __init__(self, store, emit: Emit, mode: str):
         self.store, self.emit, self.mode = store, emit, mode
@@ -76,7 +85,34 @@ class Agents:
         await self.emit(role, "model_end", usage)
         output = result.get("structured_response")
         if not isinstance(output, schema):
-            raise TypeError(f"{role}: 模型没有返回预期结构")
+            messages = result.get("messages", [])
+            last = messages[-1] if messages else None
+            await self.emit(role, "response_diagnostic", {
+                "expected_schema": schema.__name__,
+                "structured_type": type(output).__name__,
+                "message_count": len(messages),
+                "last_message_type": type(last).__name__,
+                "content_length": len(str(getattr(last, "content", ""))),
+                "tool_call_count": len(getattr(last, "tool_calls", []) or []),
+                "finish_reason": str((getattr(last, "response_metadata", {}) or {}).get("finish_reason", "unknown"))[:40],
+            })
+            await self.emit(role, "format_retry", {"retry": 1, "expected_schema": schema.__name__})
+            await self.emit(role, "model_start", {"model": model.model_name, "format_retry": 1})
+            async with asyncio.timeout(100):
+                corrected = await agent.ainvoke(
+                    {"messages": [*messages, {"role": "user", "content":
+                        f"上次未提交所需结构。请保留原始约束与工具证据，调用 {schema.__name__} 结构化输出工具提交最终结果。不要仅返回普通文本，不要编造候选。"}]},
+                    config={"recursion_limit": 12},
+                )
+            retry_usage = {"input_tokens": 0, "output_tokens": 0}
+            for message in corrected.get("messages", [])[len(messages) + 1:]:
+                metadata = getattr(message, "usage_metadata", None) or {}
+                for key in retry_usage:
+                    retry_usage[key] += metadata.get(key, 0)
+            await self.emit(role, "model_end", retry_usage)
+            output = corrected.get("structured_response")
+            if not isinstance(output, schema):
+                raise StructuredResponseError(role)
         return output
 
     async def research(

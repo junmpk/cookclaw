@@ -96,6 +96,41 @@ async def silent(*args):
     pass
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("succeeds", [True, False])
+async def test_live_missing_structure_retries_once_without_leaking_content(monkeypatch, succeeds):
+    from langchain_core.messages import AIMessage, HumanMessage
+
+    from app.demo import agents as module
+    from app.demo.models import MenuDecision
+    calls, events = [], []
+
+    class StubAgent:
+        async def ainvoke(self, payload, config):
+            calls.append(payload)
+            result = {"messages": [HumanMessage(content="private request"), AIMessage(content="private response")]}
+            if len(calls) == 2 and succeeds:
+                result["structured_response"] = MenuDecision(recipe_ids=["fixture-a"], explanation="ok")
+            return result
+
+    async def emit(role, kind, data):
+        events.append((role, kind, data))
+
+    monkeypatch.setattr(module, "ChatOpenAI", lambda **kwargs: SimpleNamespace(model_name="test"))
+    monkeypatch.setattr(module, "create_agent", lambda **kwargs: StubAgent())
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "test-only")
+    runner = Agents(FakeStore(), emit, "live")
+    if succeeds:
+        result = await runner.invoke("menu", MenuDecision, [], {}, "test")
+        assert result.recipe_ids == ["fixture-a"]
+    else:
+        with pytest.raises(module.StructuredResponseError, match="菜单输出格式不符合要求"):
+            await runner.invoke("menu", MenuDecision, [], {}, "test")
+    assert len(calls) == 2
+    assert "private" not in json.dumps(events)
+    assert sum(kind == "format_retry" for _, kind, _ in events) == 1
+
+
 def initial(**overrides):
     brief = Brief(request="test fixture workflow", dishes=1, soups=1, **overrides)
     return {"brief": brief.model_dump(), "version": 1, "research_count": 0, "revision_count": 0}
